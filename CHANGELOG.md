@@ -12,6 +12,13 @@ Formato inspirado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/)
 
 ---
 
+## [0.2.1] — 2026-09-07
+
+### Alterado
+- Etapa Importar: caixas mais compactas; botões com texto menor (`img02.png` / `modelo01.png` / `Outro arquivo`).
+
+---
+
 ## [0.2.0] — 2026-09-07
 
 ### Adicionado
