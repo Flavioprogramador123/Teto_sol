@@ -1,8 +1,14 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "node:fs";
 import { pepilenePersist } from "./plugins/persist";
 import { pepileneVisual } from "./plugins/visual";
 import { pepileneSolar } from "./plugins/solar";
+
+const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as {
+  version: string;
+};
+const APP_VERSION = pkg.version;
 
 function terminalAccessLog(): Plugin {
   return {
@@ -32,8 +38,35 @@ function terminalAccessLog(): Plugin {
   };
 }
 
+function htmlVersionStamp(): Plugin {
+  return {
+    name: "html-version-stamp",
+    transformIndexHtml(html) {
+      return html
+        .replace(
+          /<title>.*?<\/title>/,
+          `<title>PlanoSol v${APP_VERSION} — PIENG Soluções Energéticas</title>`,
+        )
+        .replace(
+          '<div id="root"></div>',
+          `<div id="root" data-app-version="v${APP_VERSION}"></div><!-- planosol-build v${APP_VERSION} -->`,
+        );
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), pepilenePersist(), pepileneVisual(), pepileneSolar(), terminalAccessLog()],
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
+  plugins: [
+    react(),
+    htmlVersionStamp(),
+    pepilenePersist(),
+    pepileneVisual(),
+    pepileneSolar(),
+    terminalAccessLog(),
+  ],
   server: {
     port: 5173,
     strictPort: true,

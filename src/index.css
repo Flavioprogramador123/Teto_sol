@@ -885,6 +885,14 @@ input:focus, select:focus { border-color: #8a6918; }
   background: var(--statusbar-bg);
 }
 
+.statusbar-version {
+  flex-shrink: 0;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
 .statusbar em {
   color: var(--text);
   font-style: normal;

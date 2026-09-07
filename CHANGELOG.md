@@ -7,8 +7,8 @@ Formato inspirado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/)
 
 ## [Unreleased]
 
-### Alterado
-- Layout **mobile/responsivo** (≤900px): mapa em cima + painel embaixo; topbar compacta; botões Importar empilhados sem corte de texto; inputs 16px (sem zoom iOS).
+### Corrigido
+- Versão do app gravada no HTML/build (`vX.Y.Z` no título, TopBar e rodapé) — deploy Vercel estava preso em build antigo.
 
 ### Em andamento
 - (vazio)
