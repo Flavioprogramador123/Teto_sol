@@ -50,7 +50,7 @@ No PIENG Propostas (produção): `NEXT_PUBLIC_TETO_SOL_URL=https://planosol.verc
 | **Vermelho** | Alerta (fora da área, vão, sombra/obstáculo); módulo **permanece** e **conta** no total |
 | **Encaixados** | `quantidade na usina / meta` (inclui vermelhos) |
 | **Atualizar usina** | Revalida e **renumera** 1…N na sequência do telhado |
-| **Catálogo de módulos** | `module_catalog.json` — 1 ficha por potência (ERP 600–700 + legados); seletor preenche W/dims |
+| **Catálogo de módulos** | CRUD em Config; `module_catalog.json` (PC) + localStorage/download (nuvem) |
 | **Ponte PIENG** | `postMessage` ou **PIENG JSON** — só `ModuleSpec` + etiqueta |
 | **Carimbo / etiqueta / logo** | PNG ~24% / ~13,5% / ~20%; logo transparente |
 | **Deploy nuvem** | Importa figura em data URL (sem disco); `.temp`/Salvar pasta só no PC |

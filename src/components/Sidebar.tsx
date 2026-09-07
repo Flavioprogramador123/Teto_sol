@@ -12,8 +12,8 @@ import {
   catalogLabel,
   catalogToModulePatch,
   getCatalogModule,
-  listCatalogModules,
   matchCatalogId,
+  useModuleCatalog,
 } from "../lib/moduleCatalog";
 
 function SelectedModuleCard() {
@@ -442,6 +442,7 @@ export function Sidebar() {
     applyHdAndCalibrate,
     restoreOriginalImage,
   } = useProject();
+  const catalog = useModuleCatalog();
   const fileRef = useRef<HTMLInputElement>(null);
   const [checkMeters, setCheckMeters] = useState(10);
   const [stampOpen, setStampOpen] = useState(false);
@@ -899,7 +900,7 @@ export function Sidebar() {
                 }}
               >
                 <option value="">Personalizado (editar campos abaixo)</option>
-                {listCatalogModules().map((m) => (
+                {catalog.modules.map((m) => (
                   <option key={m.id} value={m.id}>
                     {catalogLabel(m)}
                   </option>

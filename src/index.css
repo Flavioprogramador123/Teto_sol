@@ -994,6 +994,101 @@ input:focus, select:focus { border-color: #8a6918; }
   box-shadow: var(--shadow);
 }
 
+.modal.modal-wide {
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
+.modal-section-title {
+  margin: 18px 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.catalog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  margin-top: 8px;
+  padding-right: 2px;
+}
+
+.catalog-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.catalog-row.is-default {
+  border-color: var(--gold);
+}
+
+.catalog-row strong {
+  display: block;
+  font-size: 12px;
+}
+
+.catalog-row span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.catalog-row em {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 10px;
+  font-style: normal;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.catalog-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.btn.btn-xs {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.catalog-editor {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.catalog-editor h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.catalog-notice {
+  margin-top: 10px;
+  color: var(--text);
+}
+
 .modal h2 {
   margin: 0 0 6px;
   font-size: 18px;

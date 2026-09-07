@@ -10,6 +10,7 @@ const TEMP_CURRENT = path.join(TEMP, "current");
 const TEMP_HISTORY = path.join(TEMP, "historico");
 const PROJETOS = path.join(ROOT, "projetos");
 const DEFAULTS_FILE = path.join(ROOT, "defaults.json");
+const MODULE_CATALOG_FILE = path.join(ROOT, "module_catalog.json");
 
 const FALLBACK_DEFAULTS = {
   area_margin_m: 0,
@@ -151,6 +152,65 @@ async function handlePersist(req: IncomingMessage, res: ServerResponse, url: URL
       show_launch_rects: Boolean(body.show_launch_rects),
     };
     fs.writeFileSync(DEFAULTS_FILE, JSON.stringify(next, null, 2), "utf8");
+    sendJson(res, 200, next);
+    return;
+  }
+
+  if (req.method === "GET" && route === "/api/persist/module-catalog") {
+    if (!fs.existsSync(MODULE_CATALOG_FILE)) {
+      sendJson(res, 404, { error: "module_catalog.json não encontrado." });
+      return;
+    }
+    try {
+      const data = JSON.parse(fs.readFileSync(MODULE_CATALOG_FILE, "utf8"));
+      sendJson(res, 200, data);
+    } catch {
+      sendJson(res, 500, { error: "Falha ao ler module_catalog.json." });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && route === "/api/persist/module-catalog") {
+    const body = JSON.parse(await readBody(req)) as {
+      default_id?: string;
+      modules?: Array<Record<string, unknown>>;
+    };
+    if (!Array.isArray(body.modules) || body.modules.length === 0) {
+      sendJson(res, 400, { error: "Informe ao menos um módulo no catálogo." });
+      return;
+    }
+    const modules = body.modules.map((raw, i) => {
+      const brand = String(raw.brand ?? "").trim() || "MARCA";
+      const model = String(raw.model ?? "").trim() || "modelo";
+      const power_w = Math.max(1, Number(raw.power_w) || 0);
+      const idRaw = String(raw.id ?? "").trim();
+      const id =
+        idRaw ||
+        `${brand}-${power_w}`
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-zA-Z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .toLowerCase()
+          .slice(0, 48) ||
+        `mod-${i + 1}`;
+      return {
+        id,
+        brand,
+        model,
+        power_w,
+        width_m: Math.max(0.1, Number(raw.width_m) || 1),
+        height_m: Math.max(0.1, Number(raw.height_m) || 1),
+        thickness_m: Math.max(0.001, Number(raw.thickness_m) || 0.03),
+        gap_m: Math.max(0, Number(raw.gap_m) || 0.02),
+        notes: String(raw.notes ?? "").trim() || undefined,
+      };
+    });
+    const ids = new Set(modules.map((m) => m.id));
+    const default_id =
+      body.default_id && ids.has(body.default_id) ? body.default_id : modules[0].id;
+    const next = { default_id, modules };
+    fs.writeFileSync(MODULE_CATALOG_FILE, `${JSON.stringify(next, null, 2)}\n`, "utf8");
     sendJson(res, 200, next);
     return;
   }
