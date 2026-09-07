@@ -30,9 +30,9 @@ Formato inspirado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/)
 - Núcleos **independentes**: Teto Sol e PIENG Propostas podem rodar/vender separados; a ponte só troca JSON ocasionalmente.
 
 ### Deploy
-- Repo GitHub: `Flavioprogramador123/Teto_sol` (separado de `GeradorProposta_OCR` / `pieng-propostas`).
-- Vercel projeto **`planosol`** (time `pieng`) — URL de produção apontada no resumo após o deploy.
-- Ponte no PIENG: env `NEXT_PUBLIC_TETO_SOL_URL` → URL do PlanoSol (não misturar deploys).
+- Repo GitHub: https://github.com/Flavioprogramador123/Teto_sol (separado de `GeradorProposta_OCR` / `pieng-propostas`).
+- Vercel projeto **`planosol`** (time `pieng`): **https://planosol.vercel.app**
+- No PIENG: `NEXT_PUBLIC_TETO_SOL_URL=https://planosol.vercel.app`
 
 ---
 
