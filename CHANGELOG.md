@@ -29,8 +29,10 @@ Formato inspirado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/)
 - `module_catalog.json` — dims em metros para packing 2D; espessura 30/33 mm conforme ERP.
 - Núcleos **independentes**: Teto Sol e PIENG Propostas podem rodar/vender separados; a ponte só troca JSON ocasionalmente.
 
-### Em andamento
-- Deploy Vercel próprio do PlanoSol (Vite) — separado de `pieng-propostas.vercel.app`.
+### Deploy
+- Repo GitHub: `Flavioprogramador123/Teto_sol` (separado de `GeradorProposta_OCR` / `pieng-propostas`).
+- Vercel projeto **`planosol`** (time `pieng`) — URL de produção apontada no resumo após o deploy.
+- Ponte no PIENG: env `NEXT_PUBLIC_TETO_SOL_URL` → URL do PlanoSol (não misturar deploys).
 
 ---
 

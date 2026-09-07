@@ -14,7 +14,11 @@ App web (React + Vite + TS) para projetar usina solar sobre captura (Google Eart
 **Produto irmão (independente):** **PIENG Propostas** (`pieng-propostas`) — orçamento/proposta comercial.  
 Deploy e repositório **separados**; vendáveis isolados ou usados juntos via ponte JSON.
 
-Dev: `http://localhost:5173/`
+Dev: `http://localhost:5173/`  
+Prod (Vercel, projeto `planosol`): ver URL após deploy — configurar no PIENG em `NEXT_PUBLIC_TETO_SOL_URL`.
+
+**Repos GitHub:** https://github.com/Flavioprogramador123/Teto_sol  
+**PIENG Propostas:** https://github.com/Flavioprogramador123/GeradorProposta_OCR · https://pieng-propostas-pieng.vercel.app
 
 ---
 

@@ -9,8 +9,10 @@ projetos/*
 .venv
 __pycache__/
 .pytest_cache/
+*.tsbuildinfo
 storage/original/*
 storage/enhanced/*
 storage/overlays/*
 storage/previews/*
 !storage/**/.gitkeep
+.vercel
