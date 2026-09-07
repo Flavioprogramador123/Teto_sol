@@ -489,10 +489,10 @@ export function Sidebar() {
             />
             <div className="btn-row import-actions">
               <button className="btn primary" type="button" onClick={() => void loadEarthSample()}>
-                img02.png
+                Usar img02
               </button>
               <button className="btn ghost" type="button" onClick={() => void loadDemo()}>
-                modelo01.png
+                Usar modelo01
               </button>
               <button className="btn ghost" type="button" onClick={() => fileRef.current?.click()}>
                 Outro arquivo

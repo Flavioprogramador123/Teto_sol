@@ -60,7 +60,7 @@ export function TopBar() {
               onClick={() => setStep(s.id)}
             >
               <b>{s.n}</b>
-              {s.label}
+              <span className="step-label">{s.label}</span>
             </button>
           );
         })}
