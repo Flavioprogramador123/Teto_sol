@@ -7,11 +7,15 @@ Formato inspirado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/)
 
 ## [Unreleased]
 
-### Adicionado
-- Config → CRUD do catálogo de módulos: grava `module_catalog.json` no PC; na nuvem persiste no navegador + «Baixar JSON».
-
 ### Em andamento
 - (vazio)
+
+---
+
+## [0.3.0] — 2026-09-07
+
+### Adicionado
+- Config → CRUD do catálogo de módulos: grava `module_catalog.json` no PC; na nuvem persiste no navegador + «Baixar JSON».
 
 ---
 

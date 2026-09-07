@@ -3,7 +3,7 @@
 Documento vivo do estado do produto e das mudanças recentes.
 Atualizar sempre que houver alteração relevante (junto com `CHANGELOG.md`).
 
-**Última atualização:** 2026-09-07 · **versão:** 0.2.0
+**Última atualização:** 2026-09-07 · **versão:** 0.3.0
 
 ---
 
