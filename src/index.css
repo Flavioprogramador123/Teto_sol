@@ -253,8 +253,10 @@ button { cursor: pointer; }
 
 .steps {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   flex: 1;
+  min-width: 0;
+  align-items: center;
 }
 
 .step {
@@ -262,21 +264,32 @@ button { cursor: pointer; }
   background: var(--surface);
   color: var(--muted);
   border-radius: 999px;
-  padding: 6px 10px;
-  display: flex;
+  padding: 4px 8px;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  width: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .step b {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: 10px;
   background: var(--surface-2);
+  flex-shrink: 0;
+}
+
+.step-label {
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .step.active {

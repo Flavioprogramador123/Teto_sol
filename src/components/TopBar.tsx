@@ -8,7 +8,7 @@ import { StampExport } from "./StampExport";
 
 const STEPS: Array<{ id: Step; n: number; label: string }> = [
   { id: "import", n: 1, label: "Importar" },
-  { id: "edit", n: 2, label: "Editar imagem" },
+  { id: "edit", n: 2, label: "Editar" },
   { id: "scale", n: 3, label: "Calibrar" },
   { id: "draw", n: 4, label: "Telhado" },
   { id: "layout", n: 5, label: "Usina" },
