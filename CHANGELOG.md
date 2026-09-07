@@ -5,6 +5,16 @@ Formato inspirado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/)
 
 ---
 
+## [Unreleased]
+
+### Adicionado
+- Ao fechar área útil/restrita: 1º ponto em azul; após ~2 s sem clique, balão «Fecha aqui» junto ao ponto.
+
+### Alterado
+- Carimbo, etiqueta e logo um pouco maiores no PNG/PDF (~24% / ~13,5% / ~20% da largura).
+
+---
+
 ## [2026-09-07] — Ponte PIENG Propostas + catálogo ERP
 
 ### Adicionado

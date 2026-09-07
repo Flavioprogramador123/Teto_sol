@@ -206,6 +206,7 @@ export function CanvasBoard() {
   const [holdingScale, setHoldingScale] = useState(false);
   const [overVertex, setOverVertex] = useState<{ id: string; index: number } | null>(null);
   const [holdingVertex, setHoldingVertex] = useState(false);
+  const [closeHereHint, setCloseHereHint] = useState(false);
   const [moduleTape, setModuleTape] = useState<{
     x: number;
     y: number;
@@ -217,6 +218,15 @@ export function CanvasBoard() {
   useEffect(() => {
     if (state.tool !== "ruler") setModuleTape(null);
   }, [state.tool]);
+  // Área útil / restrita: após ~2,2 s sem clique, sugere fechar no 1º ponto
+  useEffect(() => {
+    setCloseHereHint(false);
+    const draftingClose =
+      (state.tool === "area" || state.tool === "obstacle") && state.draft.length >= 3;
+    if (!draftingClose) return;
+    const t = window.setTimeout(() => setCloseHereHint(true), 2200);
+    return () => window.clearTimeout(t);
+  }, [state.draft, state.tool]);
   const [showAreas, setShowAreas] = useState(() => localStorage.getItem("pepilene-show-areas") !== "0");
   const showModuleNumbers = Boolean(state.visualization?.show_module_numbers);
   useEffect(() => {
@@ -1443,16 +1453,78 @@ export function CanvasBoard() {
                     strokeDasharray={`${6 * ui} ${4 * ui}`}
                     strokeWidth={1.6 * ui}
                   />
-                  {state.draft.map((pt, i) => (
-                    <circle
-                      key={`draft-${i}`}
-                      cx={pt[0]}
-                      cy={pt[1]}
-                      r={(i === 0 ? 6 : 4) * ui}
-                      fill={i === 0 ? "#fff4d2" : "#f3c15b"}
-                      stroke="#1a1408"
-                    />
-                  ))}
+                  {state.draft.map((pt, i) => {
+                    const isFirst = i === 0;
+                    const canClose =
+                      isFirst &&
+                      state.draft.length >= 3 &&
+                      (state.tool === "area" || state.tool === "obstacle");
+                    return (
+                      <g key={`draft-${i}`}>
+                        {canClose && (
+                          <circle
+                            cx={pt[0]}
+                            cy={pt[1]}
+                            r={11 * ui}
+                            fill="none"
+                            stroke="#3db8ff"
+                            strokeWidth={1.8 * ui}
+                            strokeDasharray={`${3.5 * ui} ${2.5 * ui}`}
+                            opacity={0.95}
+                          />
+                        )}
+                        <circle
+                          cx={pt[0]}
+                          cy={pt[1]}
+                          r={(isFirst ? 7 : 4) * ui}
+                          fill={isFirst ? "#3db8ff" : "#f3c15b"}
+                          stroke={isFirst ? "#0a1a28" : "#1a1408"}
+                          strokeWidth={(isFirst ? 1.6 : 1.1) * ui}
+                        />
+                      </g>
+                    );
+                  })}
+                  {closeHereHint &&
+                    state.draft.length >= 3 &&
+                    (state.tool === "area" || state.tool === "obstacle") &&
+                    (() => {
+                      const [fx, fy] = state.draft[0];
+                      const bx = 12 * ui;
+                      const by = -36 * ui;
+                      const bw = 78 * ui;
+                      const bh = 22 * ui;
+                      return (
+                        <g transform={`translate(${fx} ${fy})`} style={{ pointerEvents: "none" }}>
+                          <path
+                            d={`M ${bx + 10 * ui} ${by + bh} L ${4 * ui} ${-2 * ui} L ${bx + 22 * ui} ${by + bh} Z`}
+                            fill="rgba(8, 18, 30, 0.92)"
+                            stroke="#3db8ff"
+                            strokeWidth={1.2 * ui}
+                          />
+                          <rect
+                            x={bx}
+                            y={by}
+                            width={bw}
+                            height={bh}
+                            rx={5 * ui}
+                            fill="rgba(8, 18, 30, 0.92)"
+                            stroke="#3db8ff"
+                            strokeWidth={1.2 * ui}
+                          />
+                          <text
+                            x={bx + bw / 2}
+                            y={by + bh * 0.68}
+                            textAnchor="middle"
+                            fill="#e8f6ff"
+                            fontSize={11 * ui}
+                            fontWeight={700}
+                            fontFamily='"DM Sans", "Segoe UI", sans-serif'
+                          >
+                            Fecha aqui
+                          </text>
+                        </g>
+                      );
+                    })()}
                 </g>
               )}
               {state.step === "scale" && scalePoints.length > 0 && (

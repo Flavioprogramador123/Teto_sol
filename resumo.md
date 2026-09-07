@@ -3,7 +3,7 @@
 Documento vivo do estado do produto e das mudanças recentes.
 Atualizar sempre que houver alteração relevante (junto com `CHANGELOG.md`).
 
-**Última atualização:** 2026-09-07 (ponte PIENG Propostas + catálogo ERP 600–700 W)
+**Última atualização:** 2026-09-07 (carimbo+ e balão «Fecha aqui»)
 
 ---
 
@@ -45,7 +45,8 @@ No PIENG Propostas (produção): `NEXT_PUBLIC_TETO_SOL_URL=https://planosol.verc
 | **Atualizar usina** | Revalida e **renumera** 1…N na sequência do telhado |
 | **Catálogo de módulos** | `module_catalog.json` — 1 ficha por potência (ERP 600–700 + legados); seletor preenche W/dims |
 | **Ponte PIENG** | `postMessage` ou **PIENG JSON** — só `ModuleSpec` + etiqueta |
-| **Carimbo / etiqueta / logo** | Compactos no PNG (~20% / ~11% / ~16%); logo com fundo transparente |
+| **Carimbo / etiqueta / logo** | PNG ~24% / ~13,5% / ~20%; logo transparente |
+| **Fechar polígono** | 1º ponto azul; idle ~2 s → balão «Fecha aqui» (útil / restrita) |
 | **Local · Motor solar** | Lat/lon, rodapé Earth, motor — separado do carimbo |
 
 ---

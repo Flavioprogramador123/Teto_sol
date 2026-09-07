@@ -350,12 +350,12 @@ export async function composeStampSheet(state: ProjectState): Promise<HTMLCanvas
   const power = (qty * state.module.power_w) / 1000;
   const margin = canvas.width * 0.016;
   await drawWatermark(ctx, canvas.width, canvas.height);
-  // Carimbo / etiqueta / logo compactos — menos cobertura sobre o telhado
-  const dataW = canvas.width * 0.2;
+  // Carimbo / etiqueta / logo — tamanho médio (legível sem cobrir o telhado)
+  const dataW = canvas.width * 0.24;
   drawDataCard(ctx, margin, margin, dataW, etiqueta, state.module, qty, power);
-  const labelW = canvas.width * 0.11;
+  const labelW = canvas.width * 0.135;
   drawLabelCard(ctx, canvas.width - labelW - margin, margin, labelW, etiqueta);
-  const brandW = canvas.width * 0.16;
+  const brandW = canvas.width * 0.2;
   await drawCompanyStamp(
     ctx,
     margin,
