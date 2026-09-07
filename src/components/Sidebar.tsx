@@ -455,7 +455,7 @@ export function Sidebar() {
           <p className="lead">
             A foto permanece como fundo. O projeto é desenhado em camadas vetoriais por cima, sem alterar o arquivo original.
           </p>
-          <div className="card">
+          <div className="card import-card">
             <h3>
               Importar
               <HelpTip>
@@ -474,7 +474,7 @@ export function Sidebar() {
               }}
             >
               <strong>Solte a captura aqui</strong>
-              No PC grava em .temp; na nuvem a figura fica nesta sessão do navegador.
+              No PC grava em .temp; na nuvem fica nesta sessão.
             </div>
             <input
               ref={fileRef}
@@ -486,19 +486,19 @@ export function Sidebar() {
                 if (file) void loadFile(file);
               }}
             />
-            <div className="btn-row">
-              <button className="btn primary" onClick={() => void loadEarthSample()}>
-                Usar img02.png
+            <div className="btn-row import-actions">
+              <button className="btn primary" type="button" onClick={() => void loadEarthSample()}>
+                img02.png
               </button>
-              <button className="btn ghost" onClick={() => void loadDemo()}>
-                Usar modelo01.png
+              <button className="btn ghost" type="button" onClick={() => void loadDemo()}>
+                modelo01.png
               </button>
-              <button className="btn ghost" onClick={() => fileRef.current?.click()}>
+              <button className="btn ghost" type="button" onClick={() => fileRef.current?.click()}>
                 Outro arquivo
               </button>
             </div>
           </div>
-          <div className="card">
+          <div className="card import-card">
             <h3>
               Sobre esta captura
               <HelpTip>

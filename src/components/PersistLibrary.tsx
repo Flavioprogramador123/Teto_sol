@@ -40,7 +40,7 @@ export function PersistLibrary() {
 
   if (cloudMode) {
     return (
-      <div className="card">
+      <div className="card import-card">
         <h3>
           Arquivos salvos
           <HelpTip>
@@ -57,7 +57,7 @@ export function PersistLibrary() {
 
   if (!info) {
     return (
-      <div className="card">
+      <div className="card import-card">
         <h3>
           Arquivos salvos
           <HelpTip>Lista rascunhos em .temp e projetos gravados na pasta projetos.</HelpTip>
@@ -69,7 +69,7 @@ export function PersistLibrary() {
 
   return (
     <>
-      <div className="card">
+      <div className="card import-card">
         <h3>
           Rascunho automático
           <HelpTip>
@@ -91,7 +91,7 @@ export function PersistLibrary() {
           <p className="hint">Nenhum rascunho ainda.</p>
         )}
       </div>
-      <div className="card">
+      <div className="card import-card">
         <h3>
           Projetos salvos
           <HelpTip>Use Salvar na barra de cima. Os arquivos ficam em projetos e, se possível, em Imagens/PlanoSol.</HelpTip>
