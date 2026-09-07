@@ -1,0 +1,1 @@
+{"root":["./vite.config.ts","./plugins/persist.ts","./plugins/solar.ts","./plugins/visual.ts"],"version":"5.9.3"}

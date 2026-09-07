@@ -1,0 +1,115 @@
+{
+  "default_id": "rene-pv-680",
+  "modules": [
+    {
+      "id": "rene-pv-700",
+      "brand": "RENEPV",
+      "model": "700W",
+      "power_w": 700,
+      "width_m": 2.384,
+      "height_m": 1.303,
+      "thickness_m": 0.033,
+      "gap_m": 0.02,
+      "notes": "ERP PIENG · 2384×1303×33 mm"
+    },
+    {
+      "id": "rene-pv-680",
+      "brand": "RENEPV",
+      "model": "680W",
+      "power_w": 680,
+      "width_m": 2.384,
+      "height_m": 1.303,
+      "thickness_m": 0.033,
+      "gap_m": 0.02,
+      "notes": "ERP PIENG · 2384×1303×33 mm"
+    },
+    {
+      "id": "rene-pv-670",
+      "brand": "RENEPV",
+      "model": "670W",
+      "power_w": 670,
+      "width_m": 2.384,
+      "height_m": 1.303,
+      "thickness_m": 0.033,
+      "gap_m": 0.02,
+      "notes": "ERP PIENG · 2384×1303×33 mm"
+    },
+    {
+      "id": "tsun-630",
+      "brand": "TSUN",
+      "model": "630W",
+      "power_w": 630,
+      "width_m": 2.382,
+      "height_m": 1.134,
+      "thickness_m": 0.03,
+      "gap_m": 0.02,
+      "notes": "ERP PIENG · 2382×1134×30 mm"
+    },
+    {
+      "id": "rene-pv-625",
+      "brand": "RENEPV",
+      "model": "625W",
+      "power_w": 625,
+      "width_m": 2.382,
+      "height_m": 1.134,
+      "thickness_m": 0.03,
+      "gap_m": 0.02,
+      "notes": "ERP PIENG · 2382×1134×30 mm"
+    },
+    {
+      "id": "znshine-600",
+      "brand": "ZNSHINE",
+      "model": "600W",
+      "power_w": 600,
+      "width_m": 2.278,
+      "height_m": 1.134,
+      "thickness_m": 0.03,
+      "gap_m": 0.02,
+      "notes": "ERP PIENG · 2278×1134×30 mm"
+    },
+    {
+      "id": "rene-pv-575",
+      "brand": "RENEPV",
+      "model": "575W",
+      "power_w": 575,
+      "width_m": 2.278,
+      "height_m": 1.134,
+      "thickness_m": 0.035,
+      "gap_m": 0.02,
+      "notes": "Referência legado"
+    },
+    {
+      "id": "rene-pv-550",
+      "brand": "RENEPV",
+      "model": "550W",
+      "power_w": 550,
+      "width_m": 2.278,
+      "height_m": 1.134,
+      "thickness_m": 0.035,
+      "gap_m": 0.02,
+      "notes": "Referência legado"
+    },
+    {
+      "id": "rene-pv-450",
+      "brand": "RENEPV",
+      "model": "450W",
+      "power_w": 450,
+      "width_m": 2.094,
+      "height_m": 1.134,
+      "thickness_m": 0.035,
+      "gap_m": 0.02,
+      "notes": "Referência legado"
+    },
+    {
+      "id": "rene-pv-400",
+      "brand": "RENEPV",
+      "model": "400W",
+      "power_w": 400,
+      "width_m": 1.722,
+      "height_m": 1.134,
+      "thickness_m": 0.035,
+      "gap_m": 0.02,
+      "notes": "Referência legado"
+    }
+  ]
+}

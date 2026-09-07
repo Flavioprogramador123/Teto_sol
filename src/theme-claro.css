@@ -1,0 +1,122 @@
+/* Tema claro do projeto inteiro.
+   Ativa com a classe theme-claro no <html>.
+   O usuário troca em Claro / Escuro na barra de cima. */
+
+html.theme-claro {
+  --bg: #eef2f6;
+  --bg-2: #f7f9fb;
+  --surface: #ffffff;
+  --surface-2: #e8eef3;
+  --line: #c5ced8;
+  --text: #1a2330;
+  --muted: #4b5563;
+  --gold: #c48910;
+  --gold-dim: rgba(196, 137, 16, 0.14);
+  --green: #1f8a52;
+  --green-dim: rgba(31, 138, 82, 0.12);
+  --red: #c23d34;
+  --red-dim: rgba(194, 61, 52, 0.12);
+  --cyan: #1d6fa8;
+  --shadow: 0 12px 28px rgba(20, 32, 48, 0.12);
+  --topbar-bg: rgba(247, 249, 251, 0.94);
+  --overlay-bg: #ffffff;
+  --overlay-btn: #ffffff;
+  --overlay-btn-on: #1d6fa8;
+  --overlay-btn-on-ink: #ffffff;
+  --stage-bg: #d7dee6;
+  --statusbar-bg: #e8eef3;
+  --modal-dim: rgba(30, 40, 52, 0.35);
+  --chip-bad: #a8322b;
+  --app-glow: rgba(29, 111, 168, 0.08);
+  color: var(--text);
+  background: var(--bg);
+}
+
+html.theme-claro input:focus,
+html.theme-claro select:focus,
+html.theme-claro textarea:focus {
+  border-color: #1d6fa8;
+  box-shadow: 0 0 0 3px rgba(29, 111, 168, 0.16);
+}
+
+html.theme-claro .btn.primary {
+  background: #1d6fa8;
+  color: #fff;
+}
+
+html.theme-claro .btn.ghost {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+html.theme-claro .toolbar-cluster,
+html.theme-claro .toolbar-project {
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+html.theme-claro .toolbar-actions .btn.quiet {
+  background: transparent;
+  color: var(--muted);
+}
+
+html.theme-claro .toolbar-actions .btn.quiet:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+html.theme-claro .toolbar-cluster .btn.on {
+  background: var(--gold-dim);
+  color: var(--text);
+}
+
+html.theme-claro .card.sticky-fill {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  border-color: #9bb4c8;
+  box-shadow: 0 8px 20px rgba(20, 32, 48, 0.12);
+  background: var(--surface);
+}
+
+html.theme-claro .stamp-form {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+html.theme-claro .stamp-card {
+  background: var(--surface);
+  border: 1px solid #8eb4d2;
+  color: var(--text);
+}
+
+html.theme-claro .stamp-data > span,
+html.theme-claro .stamp-cols small,
+html.theme-claro .stamp-label b {
+  color: var(--muted);
+}
+
+html.theme-claro .stamp-label small {
+  color: #1d6fa8;
+}
+
+html.theme-claro .stamp-cols {
+  border-top-color: #b7c9d8;
+}
+
+html.theme-claro .help-tip-pop {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+html.theme-claro .list-item {
+  background: var(--surface);
+}
+
+html.theme-claro .brand-mark {
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--line);
+}

@@ -1,0 +1,7 @@
+{
+  "area_margin_m": 0,
+  "obstacle_safety_m": 0.8,
+  "module_gap_m": 0.02,
+  "launch_orientation": "paisagem",
+  "show_launch_rects": false
+}
