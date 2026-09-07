@@ -1,15 +1,27 @@
 import { useEffect, useState } from "react";
-import { persistStatus, type PersistStatus } from "../persist/client";
+import { persistApiAvailable, persistStatus, type PersistStatus } from "../persist/client";
 import { useProject } from "../state/ProjectContext";
 import { HelpTip } from "./HelpTip";
 
 export function PersistLibrary() {
   const { openSaved, restoreSession } = useProject();
   const [info, setInfo] = useState<PersistStatus | null>(null);
+  const [cloudMode, setCloudMode] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
 
   const refresh = () => {
-    void persistStatus().then(setInfo).catch(() => setInfo(null));
+    void persistApiAvailable().then((ok) => {
+      if (!ok) {
+        setCloudMode(true);
+        setInfo(null);
+        return;
+      }
+      setCloudMode(false);
+      void persistStatus().then(setInfo).catch(() => {
+        setCloudMode(true);
+        setInfo(null);
+      });
+    });
   };
 
   useEffect(() => {
@@ -25,6 +37,23 @@ export function PersistLibrary() {
       setOpening(null);
     }
   };
+
+  if (cloudMode) {
+    return (
+      <div className="card">
+        <h3>
+          Arquivos salvos
+          <HelpTip>
+            Em https://planosol.vercel.app a figura fica na sessão do navegador. Pasta .temp e projetos só no app local.
+          </HelpTip>
+        </h3>
+        <p className="hint">
+          Modo nuvem: importe a captura pelo botão acima. Rascunho em disco e «Salvar projeto» exigem o app no PC
+          (<code className="mono">npm run dev</code>). Aqui use <b>Salvar figura / PDF</b> no carimbo.
+        </p>
+      </div>
+    );
+  }
 
   if (!info) {
     return (

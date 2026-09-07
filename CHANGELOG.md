@@ -7,6 +7,9 @@ Formato inspirado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/)
 
 ## [Unreleased]
 
+### Corrigido
+- **Nuvem (Vercel):** importar figura / img02 / modelo01 não dependia mais de `/api/persist` (plugin só do `npm run dev`); usa data URL na sessão.
+
 ### Adicionado
 - Ao fechar área útil/restrita: 1º ponto em azul; após ~2 s sem clique, balão «Fecha aqui» junto ao ponto.
 

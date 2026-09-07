@@ -123,6 +123,18 @@ export async function fileToBase64(file: File): Promise<string> {
   });
 }
 
+/** API de disco (.temp / projetos) só existe no `npm run dev` (plugin Vite). Na Vercel é estático. */
+let persistProbe: Promise<boolean> | null = null;
+
+export function persistApiAvailable(): Promise<boolean> {
+  if (!persistProbe) {
+    persistProbe = fetch("/api/persist/status")
+      .then((res) => res.ok)
+      .catch(() => false);
+  }
+  return persistProbe;
+}
+
 export async function loadDefaults(): Promise<AppDefaults> {
   try {
     const data = await readJson<Partial<AppDefaults>>(await fetch("/api/persist/defaults"));
@@ -133,6 +145,9 @@ export async function loadDefaults(): Promise<AppDefaults> {
 }
 
 export async function saveDefaults(defaults: AppDefaults): Promise<AppDefaults> {
+  if (!(await persistApiAvailable())) {
+    return { ...FALLBACK_DEFAULTS, ...defaults };
+  }
   return readJson(
     await fetch("/api/persist/defaults", {
       method: "POST",
@@ -147,6 +162,7 @@ export async function persistStatus(): Promise<PersistStatus> {
 }
 
 export async function loadTemp(): Promise<LoadedPersist> {
+  if (!(await persistApiAvailable())) return { exists: false };
   return readJson(await fetch("/api/persist/temp"));
 }
 
@@ -159,6 +175,9 @@ export async function saveTemp(
   imageData?: string | null,
   originalData?: string | null,
 ): Promise<{ savedAt: string; folder: string }> {
+  if (!(await persistApiAvailable())) {
+    return { savedAt: new Date().toISOString(), folder: "(nuvem — sem disco)" };
+  }
   return readJson(
     await fetch("/api/persist/temp", {
       method: "POST",
@@ -178,6 +197,11 @@ export async function saveNamedProject(
   imageData?: string | null,
   originalData?: string | null,
 ): Promise<{ id: string; folder: string; picturesPath: string | null; savedAt: string }> {
+  if (!(await persistApiAvailable())) {
+    throw new Error(
+      "Salvar em pasta só funciona no app local (npm run dev). Na nuvem, baixe o PNG/PDF do carimbo ou use o app no PC.",
+    );
+  }
   return readJson(
     await fetch("/api/persist/save", {
       method: "POST",
@@ -193,6 +217,7 @@ export async function saveNamedProject(
 }
 
 export async function archiveTemp(): Promise<{ archived: boolean; id?: string; folder?: string }> {
+  if (!(await persistApiAvailable())) return { archived: false };
   return readJson(await fetch("/api/persist/archive", { method: "POST" }));
 }
 

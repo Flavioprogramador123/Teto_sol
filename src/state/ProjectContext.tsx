@@ -32,6 +32,7 @@ import {
   loadDefaults,
   loadSaved,
   loadTemp,
+  persistApiAvailable,
   requestEnhanceHd,
   requestGeoref,
   requestVisualization,
@@ -448,40 +449,56 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const loadFile = useCallback(async (file: File) => {
     const gen = ++sessionGenRef.current;
-    await archiveTemp();
+    const hasPersist = await persistApiAvailable();
+    if (hasPersist) {
+      try {
+        await archiveTemp();
+      } catch {
+        /* segue mesmo se o arquivo anterior não arquivar */
+      }
+    }
     const data = await fileToBase64(file);
-    const image = await readImageFile(URL.createObjectURL(file), file.name);
+    const image = await readImageFile(data, file.name);
     const name = file.name.replace(/\.[^.]+$/, "") || "Projeto";
     const stamp = Date.now();
+    // Na nuvem (Vercel) não há /api/persist — a figura fica em data URL na sessão.
+    const src = hasPersist ? `/api/persist/file?scope=temp&name=image.png&t=${stamp}` : data;
+    const original_src = hasPersist ? `/api/persist/file?scope=temp&name=original.png&t=${stamp}` : data;
     const projectState: ProjectState = {
       ...initialState(),
       image: {
         ...image,
-        src: `/api/persist/file?scope=temp&name=image.png&t=${stamp}`,
-        original_src: `/api/persist/file?scope=temp&name=original.png&t=${stamp}`,
+        src,
+        original_src,
       },
       step: "edit",
       tool: "crop",
       crop: suggestMapCrop(image.width_px, image.height_px),
       persist: { ...EMPTY_PERSIST, name, dirty: true },
       busy: true,
-      notice: `Imagem gravada em .temp (${file.name}). Lendo rodapé do Google Earth…`,
+      notice: hasPersist
+        ? `Imagem gravada em .temp (${file.name}). Lendo rodapé do Google Earth…`
+        : `Imagem importada (${file.name}). Modo nuvem — a figura fica nesta sessão. Lendo rodapé…`,
     };
     readyRef.current = true;
     clearHistory();
-    await saveTemp(serializeProject(projectState, name), data, data);
-    if (gen !== sessionGenRef.current) return;
-
-    const stored = await readImageFile(projectState.image!.src, file.name);
-    setState({
-      ...projectState,
-      image: {
-        ...stored,
-        original_src: projectState.image!.original_src,
-        original_width_px: image.width_px,
-        original_height_px: image.height_px,
-      },
-    });
+    if (hasPersist) {
+      await saveTemp(serializeProject(projectState, name), data, data);
+      if (gen !== sessionGenRef.current) return;
+      const stored = await readImageFile(projectState.image!.src, file.name);
+      setState({
+        ...projectState,
+        image: {
+          ...stored,
+          original_src: projectState.image!.original_src,
+          original_width_px: image.width_px,
+          original_height_px: image.height_px,
+        },
+      });
+    } else {
+      if (gen !== sessionGenRef.current) return;
+      setState(projectState);
+    }
 
     let georef = { ...EMPTY_GEOREF, north_up: true };
     let georefError: string | null = null;

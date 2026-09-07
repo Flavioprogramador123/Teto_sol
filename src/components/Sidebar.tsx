@@ -459,7 +459,7 @@ export function Sidebar() {
             <h3>
               Importar
               <HelpTip>
-                Solte a captura do Google Earth Web. O arquivo vai para .temp na hora. Norte para cima; o rodapé é lido para coordenadas e escala.
+                Solte a captura do Google Earth Web. No PC o arquivo vai para .temp; na nuvem fica nesta sessão.
                 img02.png é a figura atual do projeto. modelo01.png é o exemplo antigo.
               </HelpTip>
             </h3>
@@ -474,7 +474,7 @@ export function Sidebar() {
               }}
             >
               <strong>Solte a captura aqui</strong>
-              O arquivo é copiado na hora para .temp — não some se recarregar ou recomeçar.
+              No PC grava em .temp; na nuvem a figura fica nesta sessão do navegador.
             </div>
             <input
               ref={fileRef}
