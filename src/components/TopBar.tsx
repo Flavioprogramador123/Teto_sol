@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useProject } from "../state/ProjectContext";
 import type { Step } from "../types";
 import { applyTheme, readTheme, type AppTheme } from "../theme";
+import { APP_VERSION_LABEL } from "../lib/appVersion";
 import { ConfigPanel } from "./ConfigPanel";
 import { StampExport } from "./StampExport";
 
@@ -39,7 +40,9 @@ export function TopBar() {
       <div className="brand">
         <img className="brand-mark" src="/brand/logo-mark.png" alt="PIENG" width={36} height={36} />
         <div>
-          <h1>PlanoSol</h1>
+          <h1>
+            PlanoSol <span className="app-version" title="Versão do app">{APP_VERSION_LABEL}</span>
+          </h1>
           <small>PIENG Soluções Energéticas</small>
         </div>
       </div>

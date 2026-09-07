@@ -7,11 +7,19 @@ Formato inspirado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/)
 
 ## [Unreleased]
 
-### Corrigido
-- **Nuvem (Vercel):** importar figura / img02 / modelo01 não dependia mais de `/api/persist` (plugin só do `npm run dev`); usa data URL na sessão.
+### Em andamento
+- (vazio)
+
+---
+
+## [0.2.0] — 2026-09-07
 
 ### Adicionado
-- Ao fechar área útil/restrita: 1º ponto em azul; após ~2 s sem clique, balão «Fecha aqui» junto ao ponto.
+- Versão semver na TopBar (`package.json` → `APP_VERSION`); scripts `bump:patch|minor|major`.
+- Ao fechar área útil/restrita: 1º ponto em azul; após ~2 s sem clique, balão «Fecha aqui».
+
+### Corrigido
+- **Nuvem (Vercel):** importar figura / img02 / modelo01 sem `/api/persist` (data URL na sessão).
 
 ### Alterado
 - Carimbo, etiqueta e logo um pouco maiores no PNG/PDF (~24% / ~13,5% / ~20% da largura).

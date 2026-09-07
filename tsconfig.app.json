@@ -17,5 +17,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "module_catalog.json"]
+  "include": ["src", "module_catalog.json", "package.json"]
 }

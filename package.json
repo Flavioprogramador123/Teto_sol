@@ -1,12 +1,16 @@
 {
   "name": "planosol",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "version:show": "node -p \"require('./package.json').version\"",
+    "bump:patch": "npm version patch --no-git-tag-version",
+    "bump:minor": "npm version minor --no-git-tag-version",
+    "bump:major": "npm version major --no-git-tag-version",
     "test:engine": "npx --yes tsx src/engine/selfcheck.ts",
     "test:visual": ".venv/Scripts/python.exe -m pytest tests -q",
     "visual:api": ".venv/Scripts/python.exe -m uvicorn visual_engine.api:app --host 127.0.0.1 --port 8010"

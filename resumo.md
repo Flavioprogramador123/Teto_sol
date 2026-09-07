@@ -3,7 +3,7 @@
 Documento vivo do estado do produto e das mudanças recentes.
 Atualizar sempre que houver alteração relevante (junto com `CHANGELOG.md`).
 
-**Última atualização:** 2026-09-07 (import na nuvem sem /api/persist)
+**Última atualização:** 2026-09-07 · **versão:** 0.2.0
 
 ---
 
@@ -15,8 +15,15 @@ App web (React + Vite + TS) para projetar usina solar sobre captura (Google Eart
 Deploy e repositório **separados**; vendáveis isolados ou usados juntos via ponte JSON.
 
 Dev: `http://localhost:5173/`  
-**Prod:** https://planosol.vercel.app  
+**Prod:** https://planosol.vercel.app · **versão:** ver TopBar (`vX.Y.Z` = `package.json`)
 
+Bump local:
+```bash
+npm run bump:patch   # 0.2.0 → 0.2.1
+npm run bump:minor   # 0.2.0 → 0.3.0
+npm run bump:major   # 0.2.0 → 1.0.0
+```
+Depois commit/push para a nuvem refletir.
 No PIENG Propostas (produção): `NEXT_PUBLIC_TETO_SOL_URL=https://planosol.vercel.app`
 
 **Repos GitHub:** https://github.com/Flavioprogramador123/Teto_sol  
