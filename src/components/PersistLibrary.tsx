@@ -89,7 +89,12 @@ export function PersistLibrary() {
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) void importProjectFile(f).then(() => refreshDrafts());
+            if (!f) return;
+            void importProjectFile(f)
+              .catch(() => {
+                /* notice já no estado */
+              })
+              .finally(() => refreshDrafts());
             e.target.value = "";
           }}
         />
@@ -98,9 +103,15 @@ export function PersistLibrary() {
             Baixar .planosol.json
           </button>
           <button className="btn ghost" type="button" disabled={state.busy} onClick={() => fileRef.current?.click()}>
-            Abrir .planosol.json
+            {state.busy ? "Abrindo…" : "Abrir .planosol.json"}
           </button>
         </div>
+        {state.busy && state.notice && (
+          <p className="hint file-loading-hint">
+            <span className="busy-spinner inline-spinner" aria-hidden />
+            {state.notice}
+          </p>
+        )}
       </div>
 
       <div className="card import-card">

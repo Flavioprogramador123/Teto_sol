@@ -181,17 +181,51 @@ export function downloadPortableProject(file: PlanosolPortableFile, filename?: s
   URL.revokeObjectURL(url);
 }
 
-export async function parsePortableProjectFile(file: File): Promise<PlanosolPortableFile> {
-  const text = await file.text();
+export async function readFileTextWithProgress(
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onprogress = (ev) => {
+      if (ev.lengthComputable && onProgress) {
+        onProgress(Math.min(99, Math.round((ev.loaded / Math.max(1, ev.total)) * 100)));
+      }
+    };
+    reader.onload = () => {
+      onProgress?.(100);
+      resolve(String(reader.result ?? ""));
+    };
+    reader.onerror = () => reject(new Error("Falha ao ler o arquivo do disco."));
+    reader.readAsText(file);
+  });
+}
+
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export async function parsePortableProjectFile(
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<PlanosolPortableFile> {
+  const text = await readFileTextWithProgress(file, onProgress);
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error("JSON inválido.");
+    throw new Error("JSON inválido — não parece um .planosol.json.");
   }
   const data = raw as Partial<PlanosolPortableFile>;
   if (data.kind !== "planosol-project" || data.format !== 1 || !data.project || !data.imageData) {
-    throw new Error("Arquivo esperado: .planosol.json (projeto + imagem).");
+    throw new Error(
+      "Arquivo esperado: .planosol.json gerado pelo PlanoSol (projeto + imagem). Se abriu só a foto PNG/JPG, use «Outro arquivo» em Importar.",
+    );
+  }
+  if (typeof data.imageData !== "string" || !data.imageData.startsWith("data:")) {
+    throw new Error("O .planosol.json não traz a imagem embutida (imageData). Salve de novo pelo botão Salvar.");
   }
   return {
     kind: "planosol-project",

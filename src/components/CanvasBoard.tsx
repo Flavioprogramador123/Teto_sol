@@ -1690,8 +1690,13 @@ export function CanvasBoard() {
             </svg>
           </div>
         )}
-        {!image && <div className="busy">Importe a imagem do telhado para começar</div>}
-        {state.busy && <div className="busy">Calculando layout…</div>}
+        {!image && !state.busy && <div className="busy">Importe a imagem do telhado para começar</div>}
+        {state.busy && (
+          <div className="busy busy-loading" role="status" aria-live="polite">
+            <div className="busy-spinner" aria-hidden />
+            <div className="busy-msg">{state.notice || "Aguarde…"}</div>
+          </div>
+        )}
       </div>
     </div>
   );

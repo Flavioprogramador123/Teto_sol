@@ -46,6 +46,7 @@ import {
   buildPortableFile,
   deleteBrowserDraft,
   downloadPortableProject,
+  formatBytes,
   getBrowserDraft,
   listBrowserDrafts,
   MAX_BROWSER_DRAFTS,
@@ -467,6 +468,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const loadFile = useCallback(async (file: File) => {
     const gen = ++sessionGenRef.current;
+    const sizeLabel = formatBytes(file.size);
+    setState((s) => ({
+      ...s,
+      busy: true,
+      notice: `Lendo captura «${file.name}» (${sizeLabel})…`,
+    }));
+    await new Promise((r) => setTimeout(r, 20));
     const hasPersist = await persistApiAvailable();
     if (hasPersist) {
       try {
@@ -476,6 +484,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       }
     }
     const data = await fileToBase64(file);
+    if (gen !== sessionGenRef.current) return;
+    setState((s) => ({ ...s, busy: true, notice: `Montando figura (${sizeLabel})…` }));
     const image = await readImageFile(data, file.name);
     const name = file.name.replace(/\.[^.]+$/, "") || "Projeto";
     const stamp = Date.now();
@@ -2120,29 +2130,63 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const importProjectFile = useCallback(
     async (file: File) => {
+      const sizeLabel = formatBytes(file.size);
+      const tick = (msg: string) => setState((s) => ({ ...s, busy: true, notice: msg }));
       try {
-        setState((s) => ({ ...s, busy: true, notice: `Abrindo «${file.name}»…` }));
-        const portable = await parsePortableProjectFile(file);
-        const draft = await putBrowserDraft({
-          id: portable.project.id,
-          name: portable.project.name || file.name.replace(/\.planosol\.json$/i, ""),
-          project: portable.project,
-          imageData: portable.imageData,
-          originalData: portable.originalData,
+        tick(`Lendo «${file.name}» (${sizeLabel})…`);
+        await new Promise((r) => setTimeout(r, 30));
+        const portable = await parsePortableProjectFile(file, (pct) => {
+          tick(`Lendo «${file.name}» (${sizeLabel})… ${pct}%`);
         });
+        tick(`Interpretando projeto «${portable.project.name || file.name}»…`);
+        await new Promise((r) => setTimeout(r, 30));
+
+        // Abre na tela primeiro — IndexedDB pode falhar se o arquivo for muito pesado
         const ok = await applyLoaded(
           {
             exists: true,
-            project: draft.project,
-            imageUrl: draft.imageData,
-            originalUrl: draft.originalData || draft.imageData,
+            project: portable.project,
+            imageUrl: portable.imageData,
+            originalUrl: portable.originalData || portable.imageData,
           },
-          `Projeto «${draft.name}» aberto do arquivo. Pode continuar o desenho e gerar o PNG/PDF.`,
+          `Projeto «${portable.project.name}» aberto (${sizeLabel}). Pode continuar e gerar PNG/PDF.`,
         );
         if (!ok) {
-          setState((s) => ({ ...s, busy: false, notice: "Arquivo lido, mas a imagem não montou." }));
-        } else {
-          setState((s) => ({ ...s, busy: false }));
+          setState((s) => ({
+            ...s,
+            busy: false,
+            notice: "Arquivo lido, mas a imagem embutida não montou. Verifique se o .planosol.json foi gerado pelo Salvar do PlanoSol.",
+          }));
+          return;
+        }
+
+        tick("Gravando rascunho neste navegador (até 3)…");
+        try {
+          const draft = await putBrowserDraft({
+            id: portable.project.id,
+            name: portable.project.name || file.name.replace(/\.planosol\.json$/i, ""),
+            project: portable.project,
+            imageData: portable.imageData,
+            originalData: portable.originalData,
+          });
+          setState((s) => ({
+            ...s,
+            busy: false,
+            persist: {
+              ...s.persist,
+              name: draft.name,
+              last_saved_id: draft.id,
+              last_temp_at: draft.updatedAt,
+              dirty: false,
+            },
+            notice: `Projeto «${draft.name}» aberto (${sizeLabel}). Rascunho guardado neste navegador.`,
+          }));
+        } catch {
+          setState((s) => ({
+            ...s,
+            busy: false,
+            notice: `Projeto aberto (${sizeLabel}), mas o rascunho do navegador não coube (arquivo grande). Use o .planosol.json para não perder.`,
+          }));
         }
       } catch (err) {
         setState((s) => ({
