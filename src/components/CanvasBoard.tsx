@@ -228,6 +228,8 @@ export function CanvasBoard() {
     return () => window.clearTimeout(t);
   }, [state.draft, state.tool]);
   const [showAreas, setShowAreas] = useState(() => localStorage.getItem("pepilene-show-areas") !== "0");
+  /** Traço muro/divisa — oculto por padrão; ligar com «view direção». */
+  const [showHeading, setShowHeading] = useState(() => localStorage.getItem("pepilene-show-heading") === "1");
   const showModuleNumbers = Boolean(state.visualization?.show_module_numbers);
   useEffect(() => {
     // Preferência local → estado do projeto (uma vez, se ainda não ligado)
@@ -1136,10 +1138,12 @@ export function CanvasBoard() {
   }, [state.scale]);
 
   const ui = 1 / Math.max(view.zoom * fit, 0.04);
+  const headingVisible =
+    showHeading || state.tool === "heading" || (state.headingDraft?.length ?? 0) > 0;
 
   return (
     <div className="stage-wrap">
-      {state.scale.heading && (
+      {state.scale.heading && headingVisible && (
         <div className="site-compass" title="Bússola do imóvel — a figura não girou">
           <svg viewBox="0 0 72 72" aria-hidden>
             <circle cx="36" cy="36" r="32" fill="rgba(12,16,22,0.82)" stroke="#7ec8ff" strokeWidth="1.6" />
@@ -1184,6 +1188,17 @@ export function CanvasBoard() {
             }}
           />
           view number módulos
+        </label>
+        <label className="layer-toggle" title="Mostra o traço do muro/divisa e o azimute na figura">
+          <input
+            type="checkbox"
+            checked={showHeading}
+            onChange={(e) => {
+              setShowHeading(e.target.checked);
+              localStorage.setItem("pepilene-show-heading", e.target.checked ? "1" : "0");
+            }}
+          />
+          view direção
         </label>
       </div>
       <div className="legend">
@@ -1582,7 +1597,7 @@ export function CanvasBoard() {
                   ui={ui}
                 />
               )}
-              {headingPoints.length > 0 && (
+              {headingVisible && headingPoints.length > 0 && (
                 <g>
                   {headingPoints.length === 2 && (
                     <line
@@ -1591,7 +1606,8 @@ export function CanvasBoard() {
                       x2={headingPoints[1][0]}
                       y2={headingPoints[1][1]}
                       stroke="#7ec8ff"
-                      strokeWidth={2.4 * ui}
+                      strokeWidth={3.6 * ui}
+                      strokeLinecap="round"
                     />
                   )}
                   {headingPoints.map((pt, i) => (
@@ -1599,24 +1615,27 @@ export function CanvasBoard() {
                       key={`heading-${i}`}
                       cx={pt[0]}
                       cy={pt[1]}
-                      r={((state.tool === "heading" && overScaleHandle === i ? 6 : 4.5)) * ui}
+                      r={((state.tool === "heading" && overScaleHandle === i ? 8 : 6.5)) * ui}
                       fill={state.tool === "heading" && overScaleHandle === i ? "#e8f6ff" : "#7ec8ff"}
                       stroke="#1a1408"
-                      strokeWidth={1.2 * ui}
+                      strokeWidth={1.4 * ui}
                     />
                   ))}
                   {headingPoints.length === 2 && (
                     <text
                       x={(headingPoints[0][0] + headingPoints[1][0]) / 2}
-                      y={(headingPoints[0][1] + headingPoints[1][1]) / 2 - 12 * ui}
-                      fill="#7ec8ff"
-                      fontSize={12 * ui}
-                      fontWeight={700}
+                      y={(headingPoints[0][1] + headingPoints[1][1]) / 2 - 16 * ui}
+                      fill="#ccebff"
+                      fontSize={15 * ui}
+                      fontWeight={800}
                       textAnchor="middle"
+                      stroke="#0a121c"
+                      strokeWidth={3 * ui}
+                      paintOrder="stroke"
                     >
                       {state.scale.heading
-                        ? `muro / divisa · ${state.scale.heading.azimuth_deg.toFixed(1)}° · desvio ${(state.scale.heading.azimuth_deg - 90).toFixed(1)}°`
-                        : "muro / divisa"}
+                        ? `direção · ${state.scale.heading.azimuth_deg.toFixed(1)}° · desvio ${(state.scale.heading.azimuth_deg - 90).toFixed(1)}°`
+                        : "direção · traçando…"}
                     </text>
                   )}
                 </g>
