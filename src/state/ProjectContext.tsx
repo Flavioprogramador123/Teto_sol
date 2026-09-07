@@ -43,6 +43,17 @@ import {
   srcToBase64,
 } from "../persist/client";
 import {
+  buildPortableFile,
+  deleteBrowserDraft,
+  downloadPortableProject,
+  getBrowserDraft,
+  listBrowserDrafts,
+  MAX_BROWSER_DRAFTS,
+  parsePortableProjectFile,
+  putBrowserDraft,
+  type BrowserDraftMeta,
+} from "../persist/browserDrafts";
+import {
   DEFAULT_MODULE,
   EMPTY_GEOREF,
   EMPTY_PERSIST,
@@ -134,6 +145,13 @@ interface ProjectApi {
   restoreOriginalImage: () => Promise<void>;
   restoreSession: () => Promise<void>;
   saveProject: (name?: string) => Promise<void>;
+  /** Baixa .planosol.json (máquina local / pasta do Drive Desktop). */
+  downloadProjectFile: (name?: string) => Promise<void>;
+  /** Abre .planosol.json baixado em outra máquina. */
+  importProjectFile: (file: File) => Promise<void>;
+  listBrowserDrafts: () => Promise<BrowserDraftMeta[]>;
+  openBrowserDraft: (id: string) => Promise<void>;
+  deleteBrowserDraft: (id: string) => Promise<void>;
   newProject: () => Promise<void>;
   openSaved: (scope: "projetos" | "historico", id: string) => Promise<void>;
   setProjectName: (name: string) => void;
@@ -1995,15 +2013,51 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const restoreSession = useCallback(async () => {
     const gen = sessionGenRef.current;
     try {
-      const loaded = await loadTemp();
+      if (await persistApiAvailable()) {
+        const loaded = await loadTemp();
+        if (gen !== sessionGenRef.current) return;
+        const ok = await applyLoaded(loaded, "Rascunho recuperado de .temp. Nada foi perdido.");
+        if (gen !== sessionGenRef.current) return;
+        readyRef.current = true;
+        if (!ok) {
+          setState((s) => ({
+            ...s,
+            notice: "Nenhum rascunho em .temp. Solte uma imagem — ela será gravada na hora.",
+          }));
+        }
+        return;
+      }
+
+      const drafts = await listBrowserDrafts();
       if (gen !== sessionGenRef.current) return;
-      const ok = await applyLoaded(loaded, "Rascunho recuperado de .temp. Nada foi perdido.");
-      if (gen !== sessionGenRef.current) return;
+      if (!drafts.length) {
+        readyRef.current = true;
+        setState((s) => ({
+          ...s,
+          notice:
+            "Nuvem: importe a captura ou abra um .planosol.json (máquina / Google Drive Desktop). Até 3 rascunhos neste navegador.",
+        }));
+        return;
+      }
+      const draft = await getBrowserDraft(drafts[0].id);
+      if (!draft || gen !== sessionGenRef.current) {
+        readyRef.current = true;
+        return;
+      }
+      const ok = await applyLoaded(
+        {
+          exists: true,
+          project: draft.project,
+          imageUrl: draft.imageData,
+          originalUrl: draft.originalData || draft.imageData,
+        },
+        `Rascunho «${draft.name}» recuperado neste navegador (${MAX_BROWSER_DRAFTS} máx.).`,
+      );
       readyRef.current = true;
       if (!ok) {
         setState((s) => ({
           ...s,
-          notice: "Nenhum rascunho em .temp. Solte uma imagem — ela será gravada na hora.",
+          notice: "Não foi possível recuperar o rascunho do navegador. Importe a imagem ou abra o .planosol.json.",
         }));
       }
     } catch {
@@ -2011,13 +2065,133 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       readyRef.current = true;
       setState((s) => ({
         ...s,
-        notice: "Não foi possível ler .temp. Importe a imagem novamente.",
+        notice: "Não foi possível ler o rascunho. Importe a imagem novamente ou abra o arquivo .planosol.json.",
       }));
     }
   }, [applyLoaded]);
 
+  const downloadProjectFile = useCallback(async (name?: string) => {
+    const snapshot = stateRef.current;
+    if (!snapshot.image) {
+      setState((s) => ({ ...s, notice: "Importe uma imagem antes de baixar o projeto." }));
+      return;
+    }
+    const projectName = (name || snapshot.persist.name || "Projeto").trim();
+    try {
+      setState((s) => ({ ...s, busy: true, notice: "Preparando .planosol.json…" }));
+      const imageData = await srcToBase64(snapshot.image.src);
+      if (!imageData) throw new Error("Não foi possível ler a imagem.");
+      const originalData =
+        snapshot.image.original_src && snapshot.image.original_src !== snapshot.image.src
+          ? await srcToBase64(snapshot.image.original_src)
+          : imageData;
+      const project = serializeProject(snapshot, projectName);
+      const portable = buildPortableFile(project, imageData, originalData);
+      downloadPortableProject(portable, projectName);
+      const draft = await putBrowserDraft({
+        id: snapshot.persist.last_saved_id,
+        name: projectName,
+        project,
+        imageData,
+        originalData,
+      });
+      setState((s) => ({
+        ...s,
+        busy: false,
+        persist: {
+          ...s.persist,
+          name: projectName,
+          dirty: false,
+          last_saved_at: draft.updatedAt,
+          last_saved_id: draft.id,
+          last_temp_at: draft.updatedAt,
+        },
+        notice:
+          "Projeto baixado (.planosol.json). Guarde na pasta local ou no Google Drive Desktop para abrir em outra máquina.",
+      }));
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        busy: false,
+        notice: err instanceof Error ? err.message : "Falha ao baixar o projeto.",
+      }));
+    }
+  }, []);
+
+  const importProjectFile = useCallback(
+    async (file: File) => {
+      try {
+        setState((s) => ({ ...s, busy: true, notice: `Abrindo «${file.name}»…` }));
+        const portable = await parsePortableProjectFile(file);
+        const draft = await putBrowserDraft({
+          id: portable.project.id,
+          name: portable.project.name || file.name.replace(/\.planosol\.json$/i, ""),
+          project: portable.project,
+          imageData: portable.imageData,
+          originalData: portable.originalData,
+        });
+        const ok = await applyLoaded(
+          {
+            exists: true,
+            project: draft.project,
+            imageUrl: draft.imageData,
+            originalUrl: draft.originalData || draft.imageData,
+          },
+          `Projeto «${draft.name}» aberto do arquivo. Pode continuar o desenho e gerar o PNG/PDF.`,
+        );
+        if (!ok) {
+          setState((s) => ({ ...s, busy: false, notice: "Arquivo lido, mas a imagem não montou." }));
+        } else {
+          setState((s) => ({ ...s, busy: false }));
+        }
+      } catch (err) {
+        setState((s) => ({
+          ...s,
+          busy: false,
+          notice: err instanceof Error ? err.message : "Falha ao abrir o arquivo.",
+        }));
+      }
+    },
+    [applyLoaded],
+  );
+
+  const openBrowserDraft = useCallback(
+    async (id: string) => {
+      try {
+        setState((s) => ({ ...s, busy: true, notice: "Abrindo rascunho do navegador…" }));
+        const draft = await getBrowserDraft(id);
+        if (!draft) {
+          setState((s) => ({ ...s, busy: false, notice: "Rascunho não encontrado neste navegador." }));
+          return;
+        }
+        const ok = await applyLoaded(
+          {
+            exists: true,
+            project: draft.project,
+            imageUrl: draft.imageData,
+            originalUrl: draft.originalData || draft.imageData,
+          },
+          `Rascunho «${draft.name}» aberto.`,
+        );
+        setState((s) => ({ ...s, busy: false, notice: ok ? s.notice : "Não foi possível abrir o rascunho." }));
+      } catch (err) {
+        setState((s) => ({
+          ...s,
+          busy: false,
+          notice: err instanceof Error ? err.message : "Falha ao abrir rascunho.",
+        }));
+      }
+    },
+    [applyLoaded],
+  );
+
+  const removeBrowserDraft = useCallback(async (id: string) => {
+    await deleteBrowserDraft(id);
+    setState((s) => ({ ...s, notice: "Rascunho removido deste navegador." }));
+  }, []);
+
   const saveProject = useCallback(async (name?: string) => {
-    const snapshot = state;
+    const snapshot = stateRef.current;
     if (!snapshot.image) {
       setState((s) => ({ ...s, notice: "Importe uma imagem antes de salvar." }));
       return;
@@ -2026,16 +2200,49 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     try {
       setState((s) => ({ ...s, busy: true, notice: "Salvando projeto…" }));
       const imageData = await srcToBase64(snapshot.image.src);
+      if (!imageData) throw new Error("Não foi possível ler a imagem.");
       const originalData =
         snapshot.image.original_src && snapshot.image.original_src !== snapshot.image.src
           ? await srcToBase64(snapshot.image.original_src)
           : imageData;
-      const result = await saveNamedProject(
-        projectName,
-        serializeProject(snapshot, projectName),
+
+      if (await persistApiAvailable()) {
+        const result = await saveNamedProject(
+          projectName,
+          serializeProject(snapshot, projectName),
+          imageData,
+          originalData,
+        );
+        setState((s) => ({
+          ...s,
+          busy: false,
+          persist: {
+            ...s.persist,
+            name: projectName,
+            dirty: false,
+            last_saved_at: result.savedAt,
+            last_saved_id: result.id,
+            last_saved_path: result.folder,
+            last_pictures_path: result.picturesPath,
+            last_temp_at: result.savedAt,
+          },
+          notice: result.picturesPath
+            ? `Salvo em projetos e em Imagens/PlanoSol (${result.id}).`
+            : `Salvo em projetos/${result.id}.`,
+        }));
+        return;
+      }
+
+      // Nuvem: baixa arquivo para a máquina (+ rascunho IndexedDB ≤3)
+      const project = serializeProject(snapshot, projectName);
+      downloadPortableProject(buildPortableFile(project, imageData, originalData), projectName);
+      const draft = await putBrowserDraft({
+        id: snapshot.persist.last_saved_id,
+        name: projectName,
+        project,
         imageData,
         originalData,
-      );
+      });
       setState((s) => ({
         ...s,
         busy: false,
@@ -2043,15 +2250,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
           ...s.persist,
           name: projectName,
           dirty: false,
-          last_saved_at: result.savedAt,
-          last_saved_id: result.id,
-          last_saved_path: result.folder,
-          last_pictures_path: result.picturesPath,
-          last_temp_at: result.savedAt,
+          last_saved_at: draft.updatedAt,
+          last_saved_id: draft.id,
+          last_temp_at: draft.updatedAt,
         },
-        notice: result.picturesPath
-          ? `Salvo em projetos e em Imagens/PlanoSol (${result.id}).`
-          : `Salvo em projetos/${result.id}.`,
+        notice:
+          "Salvo: arquivo .planosol.json baixado (local ou pasta do Drive Desktop) + rascunho neste navegador.",
       }));
     } catch (err) {
       setState((s) => ({
@@ -2060,29 +2264,35 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         notice: err instanceof Error ? err.message : "Falha ao salvar o projeto.",
       }));
     }
-  }, [state]);
+  }, []);
 
   const newProject = useCallback(async () => {
     try {
       sessionGenRef.current += 1;
-      const archived = await archiveTemp();
+      let archivedMsg =
+        "Novo projeto. Importe a captura ou abra um .planosol.json para continuar em outra máquina.";
+      if (await persistApiAvailable()) {
+        const archived = await archiveTemp();
+        if (archived.archived) {
+          archivedMsg = `Rascunho anterior guardado em .temp/historico/${archived.id}. Pode importar de novo sem perder o que já fez.`;
+        } else {
+          archivedMsg = "Novo projeto. Solte uma imagem — ela será gravada em .temp.";
+        }
+      }
       clearHistory();
       setState({
         ...initialState(),
         launch_orientation: defaultsRef.current.launch_orientation,
         module: { ...DEFAULT_MODULE, gap_m: defaultsRef.current.module_gap_m },
-        notice: archived.archived
-          ? `Rascunho anterior guardado em .temp/historico/${archived.id}. Pode importar de novo sem perder o que já fez.`
-          : "Novo projeto. Solte uma imagem — ela será gravada em .temp.",
+        notice: archivedMsg,
       });
     } catch (err) {
       setState((s) => ({
         ...s,
-        notice: err instanceof Error ? err.message : "Falha ao arquivar o rascunho.",
+        notice: err instanceof Error ? err.message : "Falha ao iniciar novo projeto.",
       }));
     }
   }, [clearHistory]);
-
   const openSaved = useCallback(async (scope: "projetos" | "historico", id: string) => {
     try {
       setState((s) => ({ ...s, busy: true, notice: `Abrindo ${scope === "historico" ? "histórico" : "projeto"} «${id}»…` }));
@@ -2312,6 +2522,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       restoreOriginalImage,
       restoreSession,
       saveProject,
+      downloadProjectFile,
+      importProjectFile,
+      listBrowserDrafts,
+      openBrowserDraft,
+      deleteBrowserDraft: removeBrowserDraft,
       newProject,
       openSaved,
       setProjectName,
@@ -2392,6 +2607,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       restoreOriginalImage,
       restoreSession,
       saveProject,
+      downloadProjectFile,
+      importProjectFile,
+      listBrowserDrafts,
+      openBrowserDraft,
+      removeBrowserDraft,
       newProject,
       openSaved,
       setProjectName,
@@ -2425,6 +2645,25 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
               ? await srcToBase64(snap.image!.original_src)
               : imageData;
           const result = await saveTemp(serializeProject(snap, snap.persist.name), imageData, originalData);
+          if (imageData) {
+            const draft = await putBrowserDraft({
+              id: snap.persist.last_saved_id,
+              name: snap.persist.name || "Projeto",
+              project: serializeProject(snap, snap.persist.name || "Projeto"),
+              imageData,
+              originalData,
+            });
+            setState((s) => ({
+              ...s,
+              persist: {
+                ...s.persist,
+                last_temp_at: draft.updatedAt || result.savedAt,
+                last_saved_id: draft.id,
+                dirty: true,
+              },
+            }));
+            return;
+          }
           setState((s) => ({
             ...s,
             persist: { ...s.persist, last_temp_at: result.savedAt, dirty: true },

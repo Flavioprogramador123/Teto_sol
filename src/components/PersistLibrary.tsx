@@ -1,32 +1,52 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { persistApiAvailable, persistStatus, type PersistStatus } from "../persist/client";
+import { MAX_BROWSER_DRAFTS, type BrowserDraftMeta } from "../persist/browserDrafts";
 import { useProject } from "../state/ProjectContext";
 import { HelpTip } from "./HelpTip";
 
 export function PersistLibrary() {
-  const { openSaved, restoreSession } = useProject();
+  const {
+    openSaved,
+    restoreSession,
+    listBrowserDrafts,
+    openBrowserDraft,
+    deleteBrowserDraft,
+    importProjectFile,
+    downloadProjectFile,
+    state,
+  } = useProject();
   const [info, setInfo] = useState<PersistStatus | null>(null);
   const [cloudMode, setCloudMode] = useState(false);
+  const [drafts, setDrafts] = useState<BrowserDraftMeta[]>([]);
   const [opening, setOpening] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const refresh = () => {
+  const refreshDrafts = useCallback(() => {
+    void listBrowserDrafts().then(setDrafts).catch(() => setDrafts([]));
+  }, [listBrowserDrafts]);
+
+  const refresh = useCallback(() => {
     void persistApiAvailable().then((ok) => {
       if (!ok) {
         setCloudMode(true);
         setInfo(null);
+        refreshDrafts();
         return;
       }
       setCloudMode(false);
-      void persistStatus().then(setInfo).catch(() => {
-        setCloudMode(true);
-        setInfo(null);
-      });
+      void persistStatus()
+        .then(setInfo)
+        .catch(() => {
+          setCloudMode(true);
+          setInfo(null);
+        });
+      refreshDrafts();
     });
-  };
+  }, [refreshDrafts]);
 
   useEffect(() => {
     refresh();
-  }, []);
+  }, [refresh, state.persist.last_temp_at, state.persist.last_saved_id]);
 
   const open = async (scope: "projetos" | "historico", id: string) => {
     setOpening(id);
@@ -38,106 +58,149 @@ export function PersistLibrary() {
     }
   };
 
-  if (cloudMode) {
-    return (
-      <div className="card import-card">
-        <h3>
-          Arquivos salvos
-          <HelpTip>
-            Em https://planosol.vercel.app a figura fica na sessão do navegador. Pasta .temp e projetos só no app local.
-          </HelpTip>
-        </h3>
-        <p className="hint">
-          Modo nuvem: importe a captura pelo botão acima. Rascunho em disco e «Salvar projeto» exigem o app no PC
-          (<code className="mono">npm run dev</code>). Aqui use <b>Salvar figura / PDF</b> no carimbo.
-        </p>
-      </div>
-    );
-  }
-
-  if (!info) {
-    return (
-      <div className="card import-card">
-        <h3>
-          Arquivos salvos
-          <HelpTip>Lista rascunhos em .temp e projetos gravados na pasta projetos.</HelpTip>
-        </h3>
-        <p className="hint">Lendo .temp e projetos…</p>
-      </div>
-    );
-  }
+  const openDraft = async (id: string) => {
+    setOpening(id);
+    try {
+      await openBrowserDraft(id);
+      refreshDrafts();
+    } finally {
+      setOpening(null);
+    }
+  };
 
   return (
     <>
       <div className="card import-card">
         <h3>
-          Rascunho automático
+          Projeto portátil
           <HelpTip>
-            Ao soltar a imagem, uma cópia vai para .temp. Se recomeçar, o rascunho anterior vai para .temp/historico. Continuar rascunho reabre o último.
+            Baixe o .planosol.json na pasta local ou no Google Drive Desktop. Em outra máquina, abra o mesmo arquivo no
+            PlanoSol e continue. O desenho final (PNG/PDF) também pode ser gerado na nuvem.
           </HelpTip>
         </h3>
         <p className="hint">
-          Ao soltar a imagem, uma cópia vai para <code className="mono">.temp</code>. Se precisar recomeçar, o
-          rascunho anterior vai para <code className="mono">.temp/historico</code>.
+          Qualquer usuário / qualquer PC: trabalhe aqui, use <b>Salvar</b> (baixa o arquivo) e depois <b>Abrir
+          .planosol.json</b>. Se precisar alterar, reabra o arquivo na máquina atual.
         </p>
-        {info.temp.exists ? (
-          <>
-            <p className="hint">Último rascunho: {new Date(info.temp.updatedAt ?? "").toLocaleString("pt-BR")}</p>
-            <button className="btn primary" onClick={() => void restoreSession()}>
-              Continuar rascunho
-            </button>
-          </>
-        ) : (
-          <p className="hint">Nenhum rascunho ainda.</p>
-        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,application/json,.planosol.json"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void importProjectFile(f).then(() => refreshDrafts());
+            e.target.value = "";
+          }}
+        />
+        <div className="btn-row side-actions">
+          <button className="btn primary" type="button" disabled={!state.image || state.busy} onClick={() => void downloadProjectFile()}>
+            Baixar .planosol.json
+          </button>
+          <button className="btn ghost" type="button" disabled={state.busy} onClick={() => fileRef.current?.click()}>
+            Abrir .planosol.json
+          </button>
+        </div>
       </div>
+
       <div className="card import-card">
         <h3>
-          Projetos salvos
-          <HelpTip>Use Salvar na barra de cima. Os arquivos ficam em projetos e, se possível, em Imagens/PlanoSol.</HelpTip>
+          Rascunhos neste navegador
+          <HelpTip>
+            Até {MAX_BROWSER_DRAFTS} rascunhos automáticos neste aparelho/navegador (IndexedDB). Não substitui o arquivo
+            .planosol.json para levar a outro PC.
+          </HelpTip>
         </h3>
-        <p className="hint">
-          Pasta <code className="mono">projetos</code>
-          {info.folders.imagens ? <> e <code className="mono">Imagens/PlanoSol</code></> : null}.
-        </p>
-        {!info.projetos.length && <p className="hint">Nenhum projeto salvo ainda. Use Salvar na barra de cima.</p>}
-        {info.projetos.map((p) => (
-          <button
-            key={p.id}
-            className="btn ghost"
-            style={{ marginBottom: 6 }}
-            disabled={opening === p.id}
-            onClick={() => void open("projetos", p.id)}
-          >
-            {opening === p.id ? "Abrindo…" : p.name}
-            <small style={{ display: "block", color: "var(--muted)" }}>
-              {new Date(p.updatedAt).toLocaleString("pt-BR")}
-            </small>
-          </button>
-        ))}
+        {!drafts.length ? (
+          <p className="hint">Nenhum rascunho ainda. Importe uma imagem — o autosave guarda até {MAX_BROWSER_DRAFTS} aqui.</p>
+        ) : (
+          drafts.map((d) => (
+            <div key={d.id} className="catalog-row" style={{ marginBottom: 6 }}>
+              <div>
+                <strong>{d.name}</strong>
+                <span>
+                  {new Date(d.updatedAt).toLocaleString("pt-BR")} · etapa {d.step}
+                  {!d.hasImage ? " · sem imagem" : ""}
+                </span>
+              </div>
+              <div className="catalog-row-actions">
+                <button
+                  type="button"
+                  className="btn ghost btn-xs"
+                  disabled={opening === d.id || state.busy}
+                  onClick={() => void openDraft(d.id)}
+                >
+                  Abrir
+                </button>
+                <button
+                  type="button"
+                  className="btn danger btn-xs"
+                  disabled={state.busy}
+                  onClick={() => {
+                    if (window.confirm(`Remover rascunho «${d.name}» deste navegador?`)) {
+                      void deleteBrowserDraft(d.id).then(() => refreshDrafts());
+                    }
+                  }}
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+        {cloudMode && (
+          <p className="hint" style={{ marginTop: 8 }}>
+            Modo nuvem: pasta .temp do PC não existe aqui. Use o arquivo .planosol.json para levar o projeto.
+          </p>
+        )}
       </div>
-      {info.historico.length > 0 && (
-        <div className="card">
-          <h3>
-            Histórico de recomeços
-            <HelpTip>Cópias antigas guardadas quando você começou um projeto novo. Clique para reabrir.</HelpTip>
-          </h3>
-          {info.historico.slice(0, 6).map((p) => (
-            <button
-              key={p.id}
-              className="btn ghost"
-              style={{ marginBottom: 6 }}
-              disabled={Boolean(opening)}
-              onClick={() => void open("historico", p.id)}
-            >
-              {opening === p.id ? "Abrindo…" : p.name || p.id}
-              <small style={{ display: "block", color: "var(--muted)" }}>
-                {p.id}
-                {" · "}
-                {new Date(p.updatedAt).toLocaleString("pt-BR")}
-              </small>
-            </button>
-          ))}
+
+      {!cloudMode && info && (
+        <>
+          <div className="card import-card">
+            <h3>
+              Rascunho automático (.temp)
+              <HelpTip>
+                Ao soltar a imagem, uma cópia vai para .temp. Continuar rascunho reabre o último.
+              </HelpTip>
+            </h3>
+            {info.temp.exists ? (
+              <>
+                <p className="hint">Último rascunho: {new Date(info.temp.updatedAt ?? "").toLocaleString("pt-BR")}</p>
+                <button className="btn primary" type="button" onClick={() => void restoreSession()}>
+                  Continuar rascunho
+                </button>
+              </>
+            ) : (
+              <p className="hint">Nenhum rascunho em .temp ainda.</p>
+            )}
+          </div>
+          <div className="card import-card">
+            <h3>
+              Projetos salvos (PC)
+              <HelpTip>Use Salvar na barra de cima. Os arquivos ficam em projetos.</HelpTip>
+            </h3>
+            {!info.projetos.length && <p className="hint">Nenhum projeto na pasta projetos.</p>}
+            {info.projetos.map((p) => (
+              <button
+                key={p.id}
+                className="btn ghost"
+                style={{ marginBottom: 6 }}
+                disabled={opening === p.id}
+                type="button"
+                onClick={() => void open("projetos", p.id)}
+              >
+                {p.name} · {new Date(p.updatedAt).toLocaleString("pt-BR")}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!cloudMode && !info && (
+        <div className="card import-card">
+          <h3>Arquivos salvos</h3>
+          <p className="hint">Lendo .temp e projetos…</p>
         </div>
       )}
     </>

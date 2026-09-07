@@ -7,8 +7,8 @@ Formato inspirado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/)
 
 ## [Unreleased]
 
-### Corrigido
-- Versão do app gravada no HTML/build (`vX.Y.Z` no título, TopBar e rodapé) — deploy Vercel estava preso em build antigo.
+### Adicionado
+- **Nuvem / qualquer PC:** rascunhos IndexedDB (máx. 3) + arquivo portátil `.planosol.json` (Salvar / Abrir). Serve para máquina local ou pasta do Google Drive Desktop; em outro PC basta abrir o mesmo arquivo.
 
 ### Em andamento
 - (vazio)

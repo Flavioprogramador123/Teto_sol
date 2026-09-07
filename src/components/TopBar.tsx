@@ -123,7 +123,12 @@ export function TopBar() {
             placeholder="Nome do projeto"
             aria-label="Nome do projeto"
           />
-          <button className="btn primary" disabled={!state.image || state.busy} onClick={() => void saveProject()}>
+          <button
+            className="btn primary"
+            disabled={!state.image || state.busy}
+            title="PC: pasta projetos · Nuvem: baixa .planosol.json (local / Drive Desktop)"
+            onClick={() => void saveProject()}
+          >
             Salvar
           </button>
         </div>

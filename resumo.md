@@ -53,7 +53,7 @@ No PIENG Propostas (produção): `NEXT_PUBLIC_TETO_SOL_URL=https://planosol.verc
 | **Catálogo de módulos** | CRUD em Config; `module_catalog.json` (PC) + localStorage/download (nuvem) |
 | **Ponte PIENG** | `postMessage` ou **PIENG JSON** — só `ModuleSpec` + etiqueta |
 | **Carimbo / etiqueta / logo** | PNG ~24% / ~13,5% / ~20%; logo transparente |
-| **Deploy nuvem** | Importa figura em data URL (sem disco); `.temp`/Salvar pasta só no PC |
+| **Rascunho nuvem** | IndexedDB ≤3 neste navegador; **Salvar** baixa `.planosol.json` (local/Drive Desktop) |
 | **Fechar polígono** | 1º ponto azul; idle ~2 s → balão «Fecha aqui» (útil / restrita) |
 | **Local · Motor solar** | Lat/lon, rodapé Earth, motor — separado do carimbo |
 
