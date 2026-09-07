@@ -511,18 +511,36 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     readyRef.current = true;
     clearHistory();
     if (hasPersist) {
-      await saveTemp(serializeProject(projectState, name), data, data);
-      if (gen !== sessionGenRef.current) return;
-      const stored = await readImageFile(projectState.image!.src, file.name);
-      setState({
-        ...projectState,
-        image: {
-          ...stored,
-          original_src: projectState.image!.original_src,
-          original_width_px: image.width_px,
-          original_height_px: image.height_px,
-        },
-      });
+      try {
+        await saveTemp(serializeProject(projectState, name), data, data);
+        if (gen !== sessionGenRef.current) return;
+        // Se a API sumiu (ex.: nuvem com probe falso), usa data URL na sessão.
+        if (!(await persistApiAvailable())) {
+          setState({
+            ...projectState,
+            image: { ...image, src: data, original_src: data },
+            notice: `Imagem importada (${file.name}). Modo nuvem — a figura fica nesta sessão. Lendo rodapé…`,
+          });
+        } else {
+          const stored = await readImageFile(projectState.image!.src, file.name);
+          setState({
+            ...projectState,
+            image: {
+              ...stored,
+              original_src: projectState.image!.original_src,
+              original_width_px: image.width_px,
+              original_height_px: image.height_px,
+            },
+          });
+        }
+      } catch {
+        if (gen !== sessionGenRef.current) return;
+        setState({
+          ...projectState,
+          image: { ...image, src: data, original_src: data },
+          notice: `Imagem importada (${file.name}). Modo nuvem — a figura fica nesta sessão. Lendo rodapé…`,
+        });
+      }
     } else {
       if (gen !== sessionGenRef.current) return;
       setState(projectState);

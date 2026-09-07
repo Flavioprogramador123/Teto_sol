@@ -126,10 +126,36 @@ export async function fileToBase64(file: File): Promise<string> {
 /** API de disco (.temp / projetos) só existe no `npm run dev` (plugin Vite). Na Vercel é estático. */
 let persistProbe: Promise<boolean> | null = null;
 
+function markPersistUnavailable() {
+  persistProbe = Promise.resolve(false);
+}
+
+function isPersistStatusPayload(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const o = data as Record<string, unknown>;
+  return "temp" in o && "folders" in o && "projetos" in o;
+}
+
+/**
+ * Não basta `res.ok`: na Vercel o SPA rewrite devolve index.html (200) para /api/*.
+ * Só considera disponível se a resposta for JSON no formato do plugin Vite.
+ */
 export function persistApiAvailable(): Promise<boolean> {
   if (!persistProbe) {
-    persistProbe = fetch("/api/persist/status")
-      .then((res) => res.ok)
+    persistProbe = fetch("/api/persist/status", { headers: { Accept: "application/json" } })
+      .then(async (res) => {
+        if (!res.ok) return false;
+        const ct = res.headers.get("content-type") || "";
+        if (!ct.includes("application/json") && !ct.includes("text/json")) {
+          // HTML do SPA ou outro conteúdo — não é a API de disco
+          return false;
+        }
+        try {
+          return isPersistStatusPayload(await res.json());
+        } catch {
+          return false;
+        }
+      })
       .catch(() => false);
   }
   return persistProbe;
@@ -178,17 +204,22 @@ export async function saveTemp(
   if (!(await persistApiAvailable())) {
     return { savedAt: new Date().toISOString(), folder: "(nuvem — sem disco)" };
   }
-  return readJson(
-    await fetch("/api/persist/temp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project,
-        image: imageData ? { data: imageData } : undefined,
-        original: originalData ? { data: originalData } : undefined,
+  try {
+    return await readJson(
+      await fetch("/api/persist/temp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project,
+          image: imageData ? { data: imageData } : undefined,
+          original: originalData ? { data: originalData } : undefined,
+        }),
       }),
-    }),
-  );
+    );
+  } catch {
+    markPersistUnavailable();
+    return { savedAt: new Date().toISOString(), folder: "(nuvem — sem disco)" };
+  }
 }
 
 export async function saveNamedProject(
@@ -218,7 +249,12 @@ export async function saveNamedProject(
 
 export async function archiveTemp(): Promise<{ archived: boolean; id?: string; folder?: string }> {
   if (!(await persistApiAvailable())) return { archived: false };
-  return readJson(await fetch("/api/persist/archive", { method: "POST" }));
+  try {
+    return await readJson(await fetch("/api/persist/archive", { method: "POST" }));
+  } catch {
+    markPersistUnavailable();
+    return { archived: false };
+  }
 }
 
 export interface VisualEnhanceResult {
