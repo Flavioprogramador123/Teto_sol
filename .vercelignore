@@ -10,7 +10,6 @@ scripts
 tests
 visual_engine
 solar_engine
-plugins
 *.tsbuildinfo
 *.md
 !resumo.md

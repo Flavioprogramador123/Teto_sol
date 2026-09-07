@@ -85,7 +85,7 @@ export function serializeProject(state: ProjectState, name: string): PersistProj
     module: state.module,
     layout: state.layout,
     georef: state.georef,
-    etiqueta: serializeEtiqueta(state.etiqueta) as ProjectState["etiqueta"],
+    etiqueta: serializeEtiqueta(state.etiqueta) as unknown as ProjectState["etiqueta"],
     image: state.image
       ? {
           file: state.image.file,

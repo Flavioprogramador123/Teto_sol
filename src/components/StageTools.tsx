@@ -35,7 +35,6 @@ export function StageTools({
     setLaunchOrientation,
     rotateSelectedModules,
     deleteSelected,
-    setDraft,
     finishOpenDraft,
     applyImageEdit,
     suggestMapFrame,

@@ -904,7 +904,7 @@ export function CanvasBoard() {
         pickModule(modFirst, e);
         return;
       }
-      if (v && v.kind === "launch" && state.tool === "launch") {
+      if (v && v.kind === "launch") {
         select({ kind: v.kind, id: v.id, vertexIndex: v.index });
         drag.current = { mode: "vertex", sx: e.clientX, sy: e.clientY, vx: 0, vy: 0, id: v.id, index: v.index, kind: v.kind };
         setHoldingVertex(true);
@@ -937,18 +937,16 @@ export function CanvasBoard() {
       select({ kind: "none", id: null });
       return;
     }
-    // Telhado/obstáculo: só selecionáveis fora da etapa Usina
-    if (state.step !== "layout") {
-      const areaId = hitPoly(p, state.areas);
-      if (areaId) {
-        select({ kind: "area", id: areaId });
-        return;
-      }
-      const obsId = hitPoly(p, state.obstacles);
-      if (obsId) {
-        select({ kind: "obstacle", id: obsId });
-        return;
-      }
+    // Fora da etapa Usina: telhado/obstáculo selecionáveis
+    const areaId = hitPoly(p, state.areas);
+    if (areaId) {
+      select({ kind: "area", id: areaId });
+      return;
+    }
+    const obsId = hitPoly(p, state.obstacles);
+    if (obsId) {
+      select({ kind: "obstacle", id: obsId });
+      return;
     }
     select({ kind: "none", id: null });
   };
