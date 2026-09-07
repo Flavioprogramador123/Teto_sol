@@ -589,7 +589,7 @@ export function Sidebar() {
               <span className="chip ok">Melhoria aplicada · {state.image.width_px} × {state.image.height_px} px</span>
             )}
           </div>
-          <div className="btn-row">
+          <div className="btn-row side-actions">
             <button className="btn primary" disabled={state.busy} onClick={() => void applyImageEdit()}>
               Aplicar recorte
             </button>
@@ -597,7 +597,7 @@ export function Sidebar() {
               Aplicar melhoria
             </button>
           </div>
-          <div className="btn-row">
+          <div className="btn-row side-actions">
             <button className="btn ghost" onClick={() => void restoreOriginalImage()}>
               Restaurar
             </button>
@@ -606,7 +606,7 @@ export function Sidebar() {
             </button>
           </div>
           <SolarCard variant="local" />
-          <button className="btn primary" style={{ marginTop: 8 }} disabled={state.busy} onClick={() => void applyHdAndCalibrate()}>
+          <button className="btn primary btn-compact" style={{ marginTop: 8 }} disabled={state.busy} onClick={() => void applyHdAndCalibrate()}>
             Melhorar e calibrar
           </button>
         </>

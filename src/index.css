@@ -484,10 +484,24 @@ input:focus, select:focus { border-color: #8a6918; }
 
 .btn {
   border: 0;
-  border-radius: 9px;
-  padding: 9px 12px;
+  border-radius: 8px;
+  padding: 6px 10px;
   background: var(--surface-2);
   width: 100%;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.sidebar .btn {
+  padding: 6px 8px;
+  font-size: 11px;
+  border-radius: 7px;
+}
+
+.sidebar .btn-row {
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .btn.primary {
@@ -976,18 +990,33 @@ input:focus, select:focus { border-color: #8a6918; }
   flex-wrap: wrap;
 }
 
-.btn-row.import-actions .btn {
+.btn-row.import-actions .btn,
+.btn-row.side-actions .btn,
+.sidebar .btn.btn-compact {
   width: auto;
-  flex: 1 1 calc(33.33% - 6px);
+  flex: 1 1 calc(50% - 4px);
   min-width: 0;
-  padding: 8px 6px;
+  padding: 5px 6px;
   font-size: 11px;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
   white-space: normal;
   word-break: break-word;
   text-align: center;
-  border-radius: 8px;
+  border-radius: 7px;
+}
+
+.btn-row.side-actions {
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.sidebar .btn.btn-compact {
+  display: block;
+  width: 100%;
+  flex: none;
+  padding: 6px 8px;
 }
 
 .busy {
