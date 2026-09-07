@@ -614,14 +614,8 @@ export function Sidebar() {
 
       {state.step === "scale" && (
         <>
-          <h2>Calibrar escala</h2>
-          <SolarCard />
-          <ol className="scale-steps">
-            <li>Digite o tamanho da barra original e marque as duas pontas.</li>
-            <li>O sistema desenha a régua gerada ao lado da escala — não no canto.</li>
-            <li>Conferir escala: a régua tem 10 m? A barra primitiva do desenho também bate?</li>
-            <li>Trace o muro ou a divisa — a bússola interna gira; a figura fica no lugar.</li>
-          </ol>
+          <h2>Calibrar escala e direção</h2>
+          <p className="lead">Marque a escala da barra e a direção do imóvel. O restante fica abaixo para conferir.</p>
           <div className="card">
             <h3>
               Escala da barra original
@@ -692,6 +686,45 @@ export function Sidebar() {
           </div>
           <div className="card">
             <h3>
+              Direção do imóvel
+              <HelpTip>
+                Clique as duas pontas do muro, da cumeeira ou da divisa — a linha «horizontal» da casa.
+                A bússola interna gira para esse rumo. A foto não se mexe. Os módulos passam a seguir esse desvio.
+              </HelpTip>
+            </h3>
+            <p className="hint">
+              Passe a linha sobre o muro ou a divisa. Casa a 93° → a grade gira 3° em relação à figura.
+            </p>
+            <div className="kpis">
+              <div className="kpi">
+                <span>azimute</span>
+                <strong>{state.scale.heading ? `${state.scale.heading.azimuth_deg.toFixed(1)}°` : "—"}</strong>
+              </div>
+              <div className="kpi">
+                <span>desvio na figura</span>
+                <strong>
+                  {state.scale.heading
+                    ? `${state.scale.heading.azimuth_deg - 90 >= 0 ? "+" : ""}${(state.scale.heading.azimuth_deg - 90).toFixed(1)}°`
+                    : "—"}
+                </strong>
+              </div>
+            </div>
+            <span className={`chip ${state.scale.heading ? "ok" : "bad"}`} style={{ marginTop: 10 }}>
+              {state.scale.heading
+                ? "Bússola do imóvel ajustada · figura no lugar"
+                : "Aguardando o traço do muro / divisa"}
+            </span>
+            <div className="btn-row" style={{ marginTop: 10 }}>
+              <button className={`btn ${state.tool === "heading" ? "primary" : "ghost"}`} onClick={() => setTool("heading")}>
+                Traçar muro / divisa
+              </button>
+              <button className="btn danger" disabled={!state.scale.heading && !state.headingDraft?.length} onClick={clearHeading}>
+                Limpar direção
+              </button>
+            </div>
+          </div>
+          <div className="card">
+            <h3>
               Conferir com a barra primitiva
               <HelpTip>
                 Depois de marcar a escala, o programa desenha uma régua do mesmo tamanho. Compare com a barra original do Earth.
@@ -733,45 +766,13 @@ export function Sidebar() {
               </div>
             )}
           </div>
-          <div className="card">
-            <h3>
-              Direção do imóvel
-              <HelpTip>
-                Clique as duas pontas do muro, da cumeeira ou da divisa — a linha «horizontal» da casa.
-                A bússola interna gira para esse rumo. A foto não se mexe. Os módulos passam a seguir esse desvio.
-              </HelpTip>
-            </h3>
-            <p className="hint">
-              Passe a linha sobre o muro ou a divisa. Casa a 93° → a grade gira 3° em relação à figura.
-            </p>
-            <div className="kpis">
-              <div className="kpi">
-                <span>azimute</span>
-                <strong>{state.scale.heading ? `${state.scale.heading.azimuth_deg.toFixed(1)}°` : "—"}</strong>
-              </div>
-              <div className="kpi">
-                <span>desvio na figura</span>
-                <strong>
-                  {state.scale.heading
-                    ? `${state.scale.heading.azimuth_deg - 90 >= 0 ? "+" : ""}${(state.scale.heading.azimuth_deg - 90).toFixed(1)}°`
-                    : "—"}
-                </strong>
-              </div>
-            </div>
-            <span className={`chip ${state.scale.heading ? "ok" : "bad"}`} style={{ marginTop: 10 }}>
-              {state.scale.heading
-                ? "Bússola do imóvel ajustada · figura no lugar"
-                : "Aguardando o traço do muro / divisa"}
-            </span>
-            <div className="btn-row" style={{ marginTop: 10 }}>
-              <button className={`btn ${state.tool === "heading" ? "primary" : "ghost"}`} onClick={() => setTool("heading")}>
-                Traçar muro / divisa
-              </button>
-              <button className="btn danger" disabled={!state.scale.heading && !state.headingDraft?.length} onClick={clearHeading}>
-                Limpar direção
-              </button>
-            </div>
-          </div>
+          <ol className="scale-steps">
+            <li>Digite o tamanho da barra original e marque as duas pontas.</li>
+            <li>O sistema desenha a régua gerada ao lado da escala — não no canto.</li>
+            <li>Conferir escala: a régua tem 10 m? A barra primitiva do desenho também bate?</li>
+            <li>Trace o muro ou a divisa — a bússola interna gira; a figura fica no lugar.</li>
+          </ol>
+          <SolarCard />
           <button className="btn primary" disabled={!state.scale.calibrated} onClick={() => setStep("draw")}>
             Continuar para o telhado
           </button>
