@@ -25,9 +25,11 @@ import {
 import { polyPxToM } from "./scale";
 import { uid } from "../lib/id";
 import {
+  azimuthToGridDeg,
   localRectToWorld,
   roofGridDeg,
   roofPivot,
+  rotateAround,
   rotatePoly,
   surfaceFrame,
   transformPoly,
@@ -50,12 +52,16 @@ function bboxOverlapArea(a: Pt[], b: Pt[]): number {
   return w * h;
 }
 
-function obstaclePolysForArea(obstacles: Obstacle[], area_m: Pt[], mpp: number): Pt[][] {
+function obstaclePolysForArea(obstacles: Obstacle[], area_m: Pt[], mpp: number, launch_m?: Pt[]): Pt[][] {
   const out: Pt[][] = [];
   for (const obs of obstacles) {
     if (!obs.excluded || obs.polygon_px.length < 3) continue;
     const poly = polyPxToM(obs.polygon_px, mpp);
-    if (!polygonsTouchOrOverlap(poly, area_m)) continue;
+    const hitsArea = polygonsTouchOrOverlap(poly, area_m);
+    const hitsLaunch = launch_m ? polygonsTouchOrOverlap(poly, launch_m) : false;
+    // Inclui restrição que cruza a área útil OU o retângulo de lançamento
+    // (evita módulo sobre restrita quando o inferArea escolhe outra água).
+    if (!hitsArea && !hitsLaunch) continue;
     const onRoof = pointInPolygon(polygonCentroid(poly), area_m);
     if (onRoof && obs.safety_margin_m > 0) {
       out.push(offsetPolygon(poly, obs.safety_margin_m) ?? poly);
@@ -170,8 +176,10 @@ function packSpace(
   obstacles: Pt[][],
   occupied: PlacedModule[],
   area: RoofArea,
+  gridDegOverride?: number | null,
 ) {
-  const gridDeg = roofGridDeg(area);
+  const gridDeg =
+    gridDegOverride != null && Number.isFinite(gridDegOverride) ? gridDegOverride : roofGridDeg(area);
   const pivot = roofPivot(usable);
   const launchR = rotatePoly(launch_m, pivot, -gridDeg);
   const usableR = rotatePoly(usable, pivot, -gridDeg);
@@ -356,6 +364,7 @@ export function packOrientedPolygon(
   meters_per_pixel: number,
   launch_id: string,
   occupied: PlacedModule[] = [],
+  gridDegOverride?: number | null,
 ): { modules: PlacedModule[]; area_id: string | null; error?: string } {
   if (launch_px.length < 3) return { modules: [], area_id: null, error: "Retângulo de lançamento incompleto." };
   const launch_m = polyPxToM(launch_px, meters_per_pixel);
@@ -363,8 +372,8 @@ export function packOrientedPolygon(
   if (!found) {
     return { modules: [], area_id: null, error: "Abra o retângulo sobre a área útil (verde)." };
   }
-  const obs = obstaclePolysForArea(obstacles, found.usable, meters_per_pixel);
-  const space = packSpace(launch_m, found.usable, obs, occupied, found.area);
+  const obs = obstaclePolysForArea(obstacles, found.usable, meters_per_pixel, launch_m);
+  const space = packSpace(launch_m, found.usable, obs, occupied, found.area, gridDegOverride);
   const w = orientation === "paisagem" ? module.width_m : module.height_m;
   const h = orientation === "paisagem" ? module.height_m : module.width_m;
   const packGap = module.gap_m + 1e-3;
@@ -396,7 +405,7 @@ export function packLaunchPolygon(
   if (!found) {
     return { modules: [], area_id: null, error: "Abra o polígono de lançamento sobre uma área útil." };
   }
-  const obs = obstaclePolysForArea(obstacles, found.usable, meters_per_pixel);
+  const obs = obstaclePolysForArea(obstacles, found.usable, meters_per_pixel, launch_m);
   const space = packSpace(launch_m, found.usable, obs, occupied, found.area);
   const oris: Array<{ orientation: ModuleOrientation; w: number; h: number }> = [
     { orientation: "paisagem", w: module.width_m, h: module.height_m },
@@ -439,6 +448,40 @@ function emptySolution(): LayoutSolution {
   };
 }
 
+/**
+ * Gira módulos das águas indicadas para o novo azimute (centros em torno do pivô da área).
+ * Usado por «Inserir diagonal» / ajuste fino sem relançar.
+ */
+export function reorientModulesToAzimuth(
+  modules: PlacedModule[],
+  areas: RoofArea[],
+  area_ids: string[],
+  azimuth_deg: number,
+  meters_per_pixel: number,
+): PlacedModule[] {
+  if (!modules.length || !area_ids.length || !(meters_per_pixel > 0)) return modules;
+  const idSet = new Set(area_ids);
+  const newGrid = azimuthToGridDeg(azimuth_deg);
+  return modules.map((m) => {
+    if (!m.area_id || !idSet.has(m.area_id)) return m;
+    const area = areas.find((a) => a.id === m.area_id);
+    if (!area || area.polygon_px.length < 3) return { ...m, rotation_deg: newGrid };
+    const oldGrid = m.rotation_deg ?? 0;
+    const delta = newGrid - oldGrid;
+    if (Math.abs(delta) < 1e-6) return { ...m, rotation_deg: newGrid };
+    const pivot = roofPivot(polyPxToM(area.polygon_px, meters_per_pixel));
+    const cx = m.x_m + m.width_m / 2;
+    const cy = m.y_m + m.height_m / 2;
+    const [nx, ny] = rotateAround([cx, cy], pivot, delta);
+    return {
+      ...m,
+      x_m: nx - m.width_m / 2,
+      y_m: ny - m.height_m / 2,
+      rotation_deg: newGrid,
+    };
+  });
+}
+
 export function layoutFromLaunchModules(modules: PlacedModule[], spec: ModuleSpec): LayoutResult {
   const installed = modules.length;
   const power_wp = installed * spec.power_w;
@@ -467,34 +510,63 @@ export function layoutFromLaunchModules(modules: PlacedModule[], spec: ModuleSpe
 }
 
 /**
- * Ordena módulos em sequência de leitura no rumo do telhado (linha → coluna).
- * Assim os números 1…N ficam contínuos no mapa após «Atualizar usina».
+ * Ordena módulos para numeração 1…N após «Atualizar usina»:
+ * 1) completa uma área útil antes de passar à seguinte;
+ * 2) dentro da área: cima → baixo, e em cada linha direita → esquerda
+ *    (coordenadas da figura: Y cresce para baixo, X para a direita).
  */
 export function sortModulesReadingOrder(modules: PlacedModule[]): PlacedModule[] {
   if (modules.length <= 1) return modules;
-  const gridDeg =
-    modules.reduce((s, m) => s + (m.rotation_deg ?? 0), 0) / modules.length;
-  const rad = (-gridDeg * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
+
   const rowPitch =
     modules.reduce((s, m) => s + Math.min(m.width_m, m.height_m), 0) / modules.length;
   const rowTol = Math.max(0.15, rowPitch * 0.45);
 
-  const keyed = modules.map((m) => {
-    const cx = m.x_m + m.width_m / 2;
-    const cy = m.y_m + m.height_m / 2;
-    return {
-      m,
-      lx: cx * cos - cy * sin,
-      ly: cx * sin + cy * cos,
-    };
+  const center = (m: PlacedModule) => ({
+    cx: m.x_m + m.width_m / 2,
+    cy: m.y_m + m.height_m / 2,
   });
-  keyed.sort((a, b) => {
-    if (Math.abs(a.ly - b.ly) > rowTol) return a.ly - b.ly;
-    return a.lx - b.lx;
+
+  const groups = new Map<string, PlacedModule[]>();
+  for (const m of modules) {
+    const key = m.area_id || m.launch_id || "_";
+    const list = groups.get(key);
+    if (list) list.push(m);
+    else groups.set(key, [m]);
+  }
+
+  const groupRows = [...groups.entries()].map(([key, mods]) => {
+    let sx = 0;
+    let sy = 0;
+    for (const m of mods) {
+      const c = center(m);
+      sx += c.cx;
+      sy += c.cy;
+    }
+    const n = Math.max(1, mods.length);
+    return { key, mods, cx: sx / n, cy: sy / n };
   });
-  return keyed.map((k) => k.m);
+
+  // Áreas: cima → baixo; empate → direita → esquerda
+  groupRows.sort((a, b) => {
+    if (Math.abs(a.cy - b.cy) > rowTol * 2) return a.cy - b.cy;
+    return b.cx - a.cx;
+  });
+
+  const ordered: PlacedModule[] = [];
+  for (const g of groupRows) {
+    const keyed = g.mods.map((m) => {
+      const c = center(m);
+      return { m, ...c };
+    });
+    // Linhas: cima → baixo; dentro da linha: direita → esquerda
+    keyed.sort((a, b) => {
+      if (Math.abs(a.cy - b.cy) > rowTol) return a.cy - b.cy;
+      return b.cx - a.cx;
+    });
+    ordered.push(...keyed.map((k) => k.m));
+  }
+  return ordered;
 }
 
 export function packAllLaunches(

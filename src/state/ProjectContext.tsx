@@ -11,8 +11,8 @@ import {
 import modelo01 from "../../img/modelo01.png";
 import earthWeb from "../../img/img02.png";
 import { generateLayout, validatePlacement } from "../engine/layout";
-import { layoutFromLaunchModules, packAllLaunches, packOrientedPolygon, sortModulesReadingOrder } from "../engine/launch";
-import { buildingHeadingDeg, computeDirectScale, computeScale, verifyCalibration, verifyRuler } from "../engine/scale";
+import { layoutFromLaunchModules, packAllLaunches, packOrientedPolygon, reorientModulesToAzimuth, sortModulesReadingOrder } from "../engine/launch";
+import { computeDirectScale, computeScale, orderHeadingEndpoints, verifyCalibration, verifyRuler } from "../engine/scale";
 import { composeEditedImage, suggestChromeRedacts, suggestMapCrop } from "../engine/imageEdit";
 import { enhanceHdCanvas } from "../engine/enhanceHd";
 import { groupOverlapsOthers, modulePolygon, overlapsAnyModule, pointInPolygon, polygonsTouchOrOverlap, cullOverlappingModules } from "../engine/geometry";
@@ -22,7 +22,9 @@ import {
   moduleFromPiengBridge,
   parsePiengBridgePayload,
 } from "../lib/piengBridge";
-import { DEFAULT_ROOF_PLANE, normalizeRoofPlane, roofGridDeg } from "../engine/roofPlane";
+import { DEFAULT_ROOF_PLANE, azimuthToGridDeg, dominantEdgeAzimuthDeg, normalizeRoofPlane, roofAzimuthDeg, roofGridDeg } from "../engine/roofPlane";
+import { composeStampPieces } from "../engine/stampExport";
+import { hydrateStampLayout } from "../engine/stampLayout";
 import { formatGeoRef, parseGeorefText } from "../engine/georef";
 import { reverseGeocode } from "../engine/reverseGeocode";
 import { mToPx } from "../engine/scale";
@@ -83,7 +85,12 @@ import {
   type AppDefaults,
   type Etiqueta,
   type VisualizationInfo,
+  type SpecialLaunch,
+  type StampLayout,
+  type StampOverlay,
+  type StampOverlayId,
 } from "../types";
+import { isPremiumEnabled } from "../lib/premium";
 
 
 interface ProjectApi {
@@ -114,8 +121,23 @@ interface ProjectApi {
   setDrawKind: (kind: DrawKind) => void;
   setLaunchMode: (mode: LaunchMode) => void;
   setLaunchOrientation: (orientation: ModuleOrientation) => void;
+  /** Ativa «Inserir diagonal» nas águas indicadas (mesmo azimute). Não altera o muro. */
+  activateSpecialLaunch: (area_ids: string[]) => void;
+  /** Desliga «Inserir diagonal» e volta a grade normal. */
+  clearSpecialLaunch: () => void;
+  /** Ajuste fino do azimute especial (°); gira módulos das águas do grupo. */
+  nudgeSpecialAzimuth: (delta_deg: number) => void;
+  /** Trava o azimute especial na aresta dominante do polígono (telhado na figura). */
+  alignSpecialToPolygon: () => void;
   selectModulesInPolygon: (polygon_px: Pt[]) => void;
   moveModuleGroup: (ids: string[], origins: Array<{ id: string; x_m: number; y_m: number }>, dx_m: number, dy_m: number) => void;
+  /** Gira o grupo em torno do pivô a partir das poses de origem (gesto contínuo no canvas). */
+  setModuleGroupRotated: (
+    ids: string[],
+    origins: Array<{ id: string; x_m: number; y_m: number; rotation_deg: number }>,
+    pivot: { x_m: number; y_m: number },
+    delta_deg: number,
+  ) => void;
   updateArea: (id: string, patch: Partial<RoofArea>) => void;
   updateObstacle: (id: string, patch: Partial<Obstacle>) => void;
   updateLaunch: (id: string, patch: Partial<LaunchZone>) => void;
@@ -170,6 +192,12 @@ interface ProjectApi {
     display: string;
   } | null>;
   updateEtiqueta: (patch: Partial<Etiqueta>) => void;
+  patchStampOverlay: (id: StampOverlayId, patch: Partial<StampOverlay>) => void;
+  resetStampLayout: () => void;
+  setStampFocus: (id: StampOverlayId | null) => void;
+  /** Forma os carimbos na figura (pré-visualização). Necessário antes de PNG/PDF. */
+  refreshStampPreview: () => Promise<void>;
+  clearStampPreview: () => void;
   readEarthFooter: () => Promise<import("../types").GeoRef | null>;
   markUndoPoint: (coalesce?: boolean) => void;
   endUndoGesture: () => void;
@@ -204,6 +232,12 @@ function initialState(): ProjectState {
     launch_mode: "mista",
     launch_orientation: "paisagem",
     launches: [],
+    special_launch: null,
+    stamp_layout: hydrateStampLayout(null),
+    stamp_focus: null,
+    stamp_pieces: null,
+    stamp_preview_src: null,
+    stamp_ready: false,
     busy: false,
     notice: null,
     persist: { ...EMPTY_PERSIST },
@@ -404,12 +438,21 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const setStep = useCallback((step: Step) => {
     setState((s) => {
-      // Na usina: descarta polígonos de lançamento (fantasma). Módulos permanecem.
-      const clearLaunches = step === "layout";
+      // Sombreamento só com Sol ON (flag premium local / teste interno).
+      if (step === "shadow" && !isPremiumEnabled()) {
+        return { ...s, notice: "Ative ☀ Sol ON para abrir o módulo de sombreamento." };
+      }
+      if (step === "export" && !s.image) {
+        return { ...s, notice: "Importe a figura antes de gerar o arquivo." };
+      }
+      // Na usina / sombreamento: descarta polígonos de lançamento (fantasma). Módulos permanecem.
+      const clearLaunches = step === "layout" || step === "shadow" || step === "export";
+      const leaveUsina = step !== "layout" && step !== "shadow";
       return {
         ...s,
         step,
         launches: clearLaunches ? [] : s.launches,
+        special_launch: leaveUsina ? null : s.special_launch,
         tool:
           step === "edit"
             ? "crop"
@@ -419,11 +462,29 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 ? "area"
                 : step === "layout"
                   ? "select"
-                  : "pan",
+                  : step === "shadow"
+                    ? "pan"
+                    : step === "export"
+                      ? "pan"
+                      : "pan",
+        stamp_focus: step === "export" ? s.stamp_focus : null,
+        stamp_layout:
+          step === "export"
+            ? {
+                ...hydrateStampLayout(s.stamp_layout),
+                compass: {
+                  ...hydrateStampLayout(s.stamp_layout).compass,
+                  visible: Boolean(s.visualization?.show_compass),
+                },
+              }
+            : s.stamp_layout,
         draft: [],
-        notice: clearLaunches && (s.launches?.length ?? 0) > 0
-          ? "Usina · retângulos de lançamento removidos da vista (módulos mantidos)."
-          : null,
+        notice:
+          step === "export"
+            ? "7 · Gerar arquivo — arraste as caixas flutuantes (mapa só com Alt ou clique no vazio). View bússola liga/desliga a bússola."
+            : clearLaunches && (s.launches?.length ?? 0) > 0
+              ? "Usina · retângulos de lançamento removidos da vista (módulos mantidos)."
+              : null,
         selection:
           clearLaunches &&
           (s.selection.kind === "launch" || s.selection.kind === "area" || s.selection.kind === "obstacle")
@@ -612,11 +673,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const applyHeading = useCallback((a: Pt, b: Pt) => {
     markUndoPoint();
-    const azimuth_deg = Number(buildingHeadingDeg(a, b).toFixed(1));
+    const { point_a, point_b, azimuth_deg } = orderHeadingEndpoints(a, b);
     const grid = azimuth_deg - 90;
     const gridLabel = `${grid >= 0 ? "+" : ""}${grid.toFixed(1)}°`;
     setState((s) => {
-      const heading = { point_a: a, point_b: b, azimuth_deg };
+      const heading = { point_a, point_b, azimuth_deg };
       const areas = s.areas.map((area) => ({
         ...area,
         azimuth_deg,
@@ -756,6 +817,137 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, launch_orientation: orientation }));
   }, []);
 
+  const activateSpecialLaunch = useCallback((area_ids: string[]) => {
+    setState((s) => {
+      const ids = [...new Set(area_ids.filter(Boolean))];
+      const picked = s.areas.filter((a) => ids.includes(a.id) && a.active && a.polygon_px.length >= 3);
+      if (!picked.length) {
+        return { ...s, notice: "Escolha ao menos uma área útil para o Inserir diagonal." };
+      }
+      const azList = picked.map((a) => Number(roofAzimuthDeg(a).toFixed(1)));
+      const base = azList[0];
+      const allSame = azList.every((az) => {
+        let d = Math.abs(az - base) % 360;
+        if (d > 180) d = 360 - d;
+        return d <= 0.6;
+      });
+      if (!allSame) {
+        return {
+          ...s,
+          notice: "Inserir diagonal: selecione só águas com o mesmo azimute (casos especiais). Águas 0°/90°/180°/270° usam o lançamento normal.",
+        };
+      }
+      const special_launch: SpecialLaunch = {
+        area_ids: picked.map((a) => a.id),
+        grid_azimuth_deg: base,
+      };
+      const names = picked.map((a) => a.name || "área").join(", ");
+      const modules = s.layout?.best.modules?.length
+        ? reorientModulesToAzimuth(
+            s.layout.best.modules,
+            s.areas,
+            special_launch.area_ids,
+            base,
+            s.scale.meters_per_pixel || 1,
+          )
+        : s.layout?.best.modules ?? [];
+      const layout =
+        s.layout && modules.length
+          ? { ...layoutFromLaunchModules(modules, s.module), usable_polygons_px: s.layout.usable_polygons_px, computed_at: s.layout.computed_at }
+          : s.layout;
+      return {
+        ...s,
+        special_launch,
+        layout,
+        drawKind: "lancamento",
+        tool: "launch",
+        draft: [],
+        selection: { kind: "none", id: null },
+        notice: `Inserir diagonal ON · ${names} · azimute ${base.toFixed(1)}° (muro intacto). Use ±0,5° / Alinhar ao traço se a fila ainda desviar. Desmarque o botão para sair.`,
+      };
+    });
+  }, []);
+
+  const clearSpecialLaunch = useCallback(() => {
+    setState((s) => {
+      if (!s.special_launch) return s;
+      return {
+        ...s,
+        special_launch: null,
+        notice: "Inserir diagonal OFF · grade volta ao rumo normal (área sob o cursor / muro).",
+      };
+    });
+  }, []);
+
+  const nudgeSpecialAzimuth = useCallback((delta_deg: number) => {
+    setState((s) => {
+      if (!s.special_launch || !Number.isFinite(delta_deg) || Math.abs(delta_deg) < 1e-9) return s;
+      const nextAz = Number(((((s.special_launch.grid_azimuth_deg + delta_deg) % 360) + 360) % 360).toFixed(1));
+      const area_ids = s.special_launch.area_ids;
+      const areas = s.areas.map((a) =>
+        area_ids.includes(a.id)
+          ? {
+              ...a,
+              azimuth_deg: nextAz,
+              roof_plane: { ...normalizeRoofPlane(a.roof_plane), fall_direction_deg: nextAz },
+            }
+          : a,
+      );
+      const modules = s.layout?.best.modules?.length
+        ? reorientModulesToAzimuth(s.layout.best.modules, areas, area_ids, nextAz, s.scale.meters_per_pixel || 1)
+        : [];
+      const layout =
+        s.layout && modules.length
+          ? { ...layoutFromLaunchModules(modules, s.module), usable_polygons_px: s.layout.usable_polygons_px, computed_at: Date.now() }
+          : s.layout;
+      return {
+        ...s,
+        areas,
+        layout,
+        special_launch: { ...s.special_launch, grid_azimuth_deg: nextAz },
+        notice: `Diagonal · azimute ${nextAz.toFixed(1)}° (ajuste ${delta_deg > 0 ? "+" : ""}${delta_deg}°).`,
+        visualization: { ...s.visualization, outdated: true },
+      };
+    });
+  }, []);
+
+  const alignSpecialToPolygon = useCallback(() => {
+    setState((s) => {
+      if (!s.special_launch?.area_ids.length) {
+        return { ...s, notice: "Ative Inserir diagonal antes de alinhar ao traço do polígono." };
+      }
+      const primary = s.areas.find((a) => s.special_launch!.area_ids.includes(a.id) && a.polygon_px.length >= 3);
+      if (!primary) return { ...s, notice: "Água do grupo diagonal não encontrada." };
+      const prefer = s.special_launch.grid_azimuth_deg;
+      const nextAz = dominantEdgeAzimuthDeg(primary.polygon_px, prefer);
+      const area_ids = s.special_launch.area_ids;
+      const areas = s.areas.map((a) =>
+        area_ids.includes(a.id)
+          ? {
+              ...a,
+              azimuth_deg: nextAz,
+              roof_plane: { ...normalizeRoofPlane(a.roof_plane), fall_direction_deg: nextAz },
+            }
+          : a,
+      );
+      const modules = s.layout?.best.modules?.length
+        ? reorientModulesToAzimuth(s.layout.best.modules, areas, area_ids, nextAz, s.scale.meters_per_pixel || 1)
+        : [];
+      const layout =
+        s.layout && modules.length
+          ? { ...layoutFromLaunchModules(modules, s.module), usable_polygons_px: s.layout.usable_polygons_px, computed_at: Date.now() }
+          : s.layout;
+      return {
+        ...s,
+        areas,
+        layout,
+        special_launch: { area_ids, grid_azimuth_deg: nextAz },
+        notice: `Diagonal alinhada ao traço do polígono · azimute ${nextAz.toFixed(1)}° (telhado na figura).`,
+        visualization: { ...s.visualization, outdated: true },
+      };
+    });
+  }, []);
+
   const addArea = useCallback((polygon_px: Pt[]) => {
     markUndoPoint();
     const area: RoofArea = {
@@ -836,14 +1028,43 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const packed = canRepack
         ? packAllLaunches(s.launches, areas, s.obstacles, s.module, s.scale.meters_per_pixel)
         : null;
+
+      let layout = packed ? packed.layout : s.layout;
+      let special_launch = s.special_launch;
+      let notice = s.notice;
+
+      // Azimute da água: gira módulos existentes (não apaga a usina).
+      if (!packed && "azimuth_deg" in patch && patch.azimuth_deg != null && s.layout?.best.modules.length) {
+        const az = Number(patch.azimuth_deg);
+        const modules = reorientModulesToAzimuth(
+          s.layout.best.modules,
+          areas,
+          [id],
+          az,
+          s.scale.meters_per_pixel || 1,
+        );
+        layout = {
+          ...layoutFromLaunchModules(modules, s.module),
+          usable_polygons_px: s.layout.usable_polygons_px,
+          computed_at: Date.now(),
+        };
+        notice = `Módulos alinhados ao azimute ${az.toFixed(1)}°.`;
+        if (special_launch?.area_ids.includes(id)) {
+          special_launch = { ...special_launch, grid_azimuth_deg: Number(az.toFixed(1)) };
+        }
+      } else if (packed && "azimuth_deg" in patch && patch.azimuth_deg != null) {
+        notice = `Módulos alinhados ao azimute ${patch.azimuth_deg}°.`;
+      } else if (!packed && geom && !("azimuth_deg" in patch)) {
+        // Outras mudanças geométricas sem lançamentos ativos: marca desatualizado, mantém layout.
+        layout = s.layout;
+      }
+
       return {
         ...s,
         areas,
-        layout: packed ? packed.layout : geom ? null : s.layout,
-        notice:
-          packed && "azimuth_deg" in patch && patch.azimuth_deg != null
-            ? `Módulos alinhados ao azimute ${patch.azimuth_deg}°.`
-            : s.notice,
+        layout,
+        special_launch,
+        notice,
         visualization: { ...s.visualization, outdated: true },
       };
     });
@@ -876,28 +1097,73 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         s.scale.meters_per_pixel,
         zone.id,
         others,
+        s.special_launch ? azimuthToGridDeg(s.special_launch.grid_azimuth_deg) : null,
       );
       if (packed.error) {
         return { ...s, draft: [], notice: packed.error };
       }
-      if (!packed.modules.length) {
+      if (
+        s.special_launch &&
+        packed.area_id &&
+        !s.special_launch.area_ids.includes(packed.area_id)
+      ) {
         return {
           ...s,
           draft: [],
-          notice: "Nenhum módulo coube neste retângulo — lançamento não foi criado.",
+          notice: "Inserir diagonal: lance só sobre as águas escolhidas (mesmo azimute especial).",
+        };
+      }
+      // Cinto de segurança: nunca aceitar módulo sobre restrita / fora da área (pack pode falhar no frame).
+      const safe = packed.modules.filter(
+        (m) =>
+          validatePlacement(
+            modulePolygon(m),
+            s.areas,
+            s.obstacles,
+            s.scale.meters_per_pixel,
+            s.module.gap_m,
+            [...others, ...packed.modules],
+            m.id,
+          ) === null,
+      );
+      if (!safe.length) {
+        return {
+          ...s,
+          draft: [],
+          notice:
+            packed.modules.length > 0
+              ? "Nenhum módulo válido neste retângulo — cai sobre área restrita ou fora da útil."
+              : "Nenhum módulo coube neste retângulo — lançamento não foi criado.",
         };
       }
       zone.area_id = packed.area_id;
-      const launches = [...s.launches, zone];
-      const layout = layoutFromLaunchModules([...others, ...packed.modules], s.module);
+      const merged = [...others, ...safe];
+      const checked = merged.map((m) => ({
+        ...m,
+        violation: validatePlacement(
+          modulePolygon(m),
+          s.areas,
+          s.obstacles,
+          s.scale.meters_per_pixel,
+          s.module.gap_m,
+          merged,
+          m.id,
+        ),
+      }));
+      const layout = layoutFromLaunchModules(checked, s.module);
+      const skipped = packed.modules.length - safe.length;
       return {
         ...s,
-        launches,
+        // Descarta o polígono de lançamento após concluir — só os módulos ficam na figura.
+        launches: [],
         draft: [],
         selection: { kind: "none", id: null },
         tool: "launch",
         layout,
-        notice: `${packed.modules.length} módulos em «${zone.name}». Continue lançando ou clique em Editar.`,
+        notice:
+          skipped > 0
+            ? `${safe.length} módulos lançados (${skipped} evitados sobre restrita/fora). Continue ou Editar.`
+            : `${safe.length} módulos lançados. Continue lançando ou clique em Editar.`,
       };
     });
   }, [markUndoPoint]);
@@ -1228,6 +1494,57 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     });
   }, [revalidateModules]);
 
+  const setModuleGroupRotated = useCallback((
+    ids: string[],
+    origins: Array<{ id: string; x_m: number; y_m: number; rotation_deg: number }>,
+    pivot: { x_m: number; y_m: number },
+    delta_deg: number,
+  ) => {
+    markUndoPoint(true);
+    setState((s) => {
+      if (!s.layout || !ids.length) return s;
+      const byId = new Map(origins.map((o) => [o.id, o]));
+      const rad = (delta_deg * Math.PI) / 180;
+      const c = Math.cos(rad);
+      const sn = Math.sin(rad);
+      const moved = s.layout.best.modules.map((m) => {
+        const o = byId.get(m.id);
+        if (!o || !ids.includes(m.id)) return m;
+        const ox = o.x_m + m.width_m / 2;
+        const oy = o.y_m + m.height_m / 2;
+        const dx = ox - pivot.x_m;
+        const dy = oy - pivot.y_m;
+        const nx = pivot.x_m + dx * c - dy * sn;
+        const ny = pivot.y_m + dx * sn + dy * c;
+        return {
+          ...m,
+          x_m: nx - m.width_m / 2,
+          y_m: ny - m.height_m / 2,
+          rotation_deg: o.rotation_deg + delta_deg,
+          source: "manual" as const,
+        };
+      });
+      const moving = moved.filter((m) => ids.includes(m.id));
+      const others = moved.filter((m) => !ids.includes(m.id));
+      if (groupOverlapsOthers(moving, others, s.module.gap_m)) return s;
+      const checked = revalidateModules(s, moved);
+      const installed = checked.length;
+      return {
+        ...s,
+        layout: {
+          ...s.layout,
+          best: { ...s.layout.best, modules: checked },
+          installed,
+          missing: Math.max(0, s.module.quantity_target - installed),
+          power_wp: installed * s.module.power_w,
+          power_kwp: (installed * s.module.power_w) / 1000,
+          occupied_area_m2: checked.reduce((sum, m) => sum + m.width_m * m.height_m, 0),
+          status: installed === 0 ? "Impossível" : installed >= s.module.quantity_target ? "Aprovado" : "Parcial",
+        },
+      };
+    });
+  }, [revalidateModules]);
+
   const moveModule = useCallback((id: string, x_m: number, y_m: number) => {
     markUndoPoint(true);
     setState((s) => {
@@ -1430,6 +1747,18 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       if (overlapsAnyModule(m, current, s.module.gap_m)) {
         return { ...s, notice: "O módulo não pode sobrepor outro." };
       }
+      const hit = validatePlacement(
+        modulePolygon(m),
+        s.areas,
+        s.obstacles,
+        s.scale.meters_per_pixel,
+        s.module.gap_m,
+        [...current, m],
+        m.id,
+      );
+      if (hit) {
+        return { ...s, notice: hit.includes("obstáculo") || hit.includes("restrit") ? `Não pode colocar sobre área restrita. ${hit}` : hit };
+      }
       const modules = [...current, m];
       const checked = revalidateModules(s, modules);
       const installed = checked.length;
@@ -1521,7 +1850,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
               status:
                 installed === 0 ? "Impossível" : installed >= layout.requested ? "Aprovado" : "Parcial",
             },
-            notice: `${installed} módulos · numeração atualizada na sequência do telhado.`,
+            notice: `${installed} módulos · numeração atualizada (área por área · cima→baixo · direita→esquerda).`,
           });
         }
 
@@ -1794,12 +2123,15 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, [markUndoPoint]);
 
   const remapAfterShift = useCallback((s: ProjectState, dx: number, dy: number): ProjectState => {
+    if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) return s;
     const shift = (p: Pt): Pt => [p[0] + dx, p[1] + dy];
     const mpp = s.scale.meters_per_pixel;
     return {
       ...s,
       areas: s.areas.map((a) => ({ ...a, polygon_px: a.polygon_px.map(shift) })),
       obstacles: s.obstacles.map((o) => ({ ...o, polygon_px: o.polygon_px.map(shift) })),
+      launches: (s.launches ?? []).map((z) => ({ ...z, polygon_px: z.polygon_px.map(shift) })),
+      draft: s.draft.map(shift),
       scaleDraft: s.scaleDraft.map(shift),
       headingDraft: (s.headingDraft ?? []).map(shift),
       ruler: s.ruler ? { a: shift(s.ruler.a), b: shift(s.ruler.b) } : null,
@@ -1831,6 +2163,14 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 y_m: m.y_m + dy * mpp,
               })),
             },
+            alternatives: s.layout.alternatives.map((alt) => ({
+              ...alt,
+              modules: alt.modules.map((m) => ({
+                ...m,
+                x_m: m.x_m + dx * mpp,
+                y_m: m.y_m + dy * mpp,
+              })),
+            })),
             usable_polygons_px: s.layout.usable_polygons_px.map((u) => ({
               ...u,
               polygon_px: u.polygon_px.map(shift),
@@ -1844,6 +2184,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     if (!Number.isFinite(factor) || Math.abs(factor - 1) < 1e-6) return s;
     const pt = (p: Pt): Pt => [p[0] * factor, p[1] * factor];
     const mpp = s.scale.meters_per_pixel;
+    // Sempre recalibra m/px quando já há escala — dimensões reais (áreas/módulos) ficam iguais.
+    const keepMeters = s.scale.calibrated && mpp > 0;
     return {
       ...s,
       draft: s.draft.map(pt),
@@ -1852,12 +2194,14 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       ruler: s.ruler ? { a: pt(s.ruler.a), b: pt(s.ruler.b) } : null,
       areas: s.areas.map((a) => ({ ...a, polygon_px: a.polygon_px.map(pt) })),
       obstacles: s.obstacles.map((o) => ({ ...o, polygon_px: o.polygon_px.map(pt) })),
-      launches: s.launches.map((z) => ({ ...z, polygon_px: z.polygon_px.map(pt) })),
+      launches: (s.launches ?? []).map((z) => ({ ...z, polygon_px: z.polygon_px.map(pt) })),
       scale: {
         ...s.scale,
-        meters_per_pixel: s.scale.reference && mpp > 0 ? mpp / factor : s.scale.meters_per_pixel,
+        meters_per_pixel: keepMeters ? mpp / factor : s.scale.meters_per_pixel,
         pixels_per_meter:
-          s.scale.reference && s.scale.pixels_per_meter > 0 ? s.scale.pixels_per_meter * factor : s.scale.pixels_per_meter,
+          keepMeters && s.scale.pixels_per_meter > 0
+            ? s.scale.pixels_per_meter * factor
+            : s.scale.pixels_per_meter,
         reference: s.scale.reference
           ? {
               ...s.scale.reference,
@@ -1872,7 +2216,24 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
               point_b: pt(s.scale.heading.point_b),
             }
           : null,
+        check: s.scale.check
+          ? {
+              ...s.scale.check,
+              marked_px: s.scale.check.marked_px * factor,
+              generated_px: s.scale.check.generated_px * factor,
+            }
+          : null,
       },
+      // Módulos em metros não mudam; só polígonos em px acompanham o resize da figura.
+      layout: s.layout
+        ? {
+            ...s.layout,
+            usable_polygons_px: s.layout.usable_polygons_px.map((u) => ({
+              ...u,
+              polygon_px: u.polygon_px.map(pt),
+            })),
+          }
+        : s.layout,
     };
   }, []);
 
@@ -2003,13 +2364,24 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       areas: p.areas,
       obstacles: p.obstacles,
       launches: p.launches ?? [],
+      special_launch: null,
+      stamp_layout: hydrateStampLayout((p as { stamp_layout?: StampLayout }).stamp_layout),
+      stamp_focus: null,
+      stamp_pieces: null,
+      stamp_preview_src: null,
+      stamp_ready: false,
       launch_mode: p.launch_mode ?? "mista",
       launch_orientation: p.launch_orientation ?? "paisagem",
       module: p.module,
       layout: p.layout,
       georef,
       etiqueta,
-      step: p.step === "import" ? "edit" : p.step,
+      step:
+        p.step === "import"
+          ? "edit"
+          : p.step === "shadow" && !isPremiumEnabled()
+            ? "layout"
+            : (p.step as Step),
       tool: p.tool,
       drawKind: p.drawKind,
       grid_step_m: p.grid_step_m,
@@ -2459,7 +2831,95 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       etiqueta: { ...freshEtiqueta(), ...s.etiqueta, ...patch },
+      stamp_ready: false,
+      stamp_pieces: null,
+      stamp_preview_src: null,
       persist: { ...s.persist, dirty: true },
+    }));
+  }, []);
+
+  const patchStampOverlay = useCallback((id: StampOverlayId, patch: Partial<StampOverlay>) => {
+    setState((s) => {
+      const layout = hydrateStampLayout(s.stamp_layout);
+      const nextOverlay = { ...layout[id], ...patch };
+      const nextPieces = s.stamp_pieces ? { ...s.stamp_pieces } : null;
+      // Visibilidade: remove peça; posição/escala: peça flutua com a caixa (export usa layout atual).
+      if (nextPieces && patch.visible === false) delete nextPieces[id];
+      return {
+        ...s,
+        stamp_layout: {
+          ...layout,
+          [id]: nextOverlay,
+        },
+        stamp_pieces: nextPieces,
+        persist: { ...s.persist, dirty: true },
+      };
+    });
+  }, []);
+
+  const resetStampLayout = useCallback(() => {
+    setState((s) => ({
+      ...s,
+      stamp_layout: hydrateStampLayout(null),
+      stamp_pieces: null,
+      stamp_preview_src: null,
+      stamp_ready: false,
+      notice: "Layout do carimbo restaurado — use Visualizar de novo.",
+      persist: { ...s.persist, dirty: true },
+    }));
+  }, []);
+
+  const setStampFocus = useCallback((id: StampOverlayId | null) => {
+    setState((s) => ({ ...s, stamp_focus: id }));
+  }, []);
+
+  const refreshStampPreview = useCallback(async () => {
+    const snap = stateRef.current;
+    if (!snap.image) {
+      setState((s) => ({ ...s, notice: "Importe a figura antes de visualizar." }));
+      return;
+    }
+    setState((s) => ({ ...s, busy: true, notice: "Formando carimbos na figura…" }));
+    try {
+      const pieces = await composeStampPieces({
+        ...snap,
+        etiqueta: {
+          ...snap.etiqueta,
+          data: snap.etiqueta.data || new Date().toLocaleDateString("pt-BR"),
+        },
+        stamp_layout: {
+          ...hydrateStampLayout(snap.stamp_layout),
+          compass: {
+            ...hydrateStampLayout(snap.stamp_layout).compass,
+            visible: Boolean(snap.visualization?.show_compass),
+          },
+        },
+      });
+      setState((s) => ({
+        ...s,
+        busy: false,
+        stamp_pieces: pieces,
+        stamp_preview_src: Object.keys(pieces).length ? "pieces" : null,
+        stamp_ready: true,
+        stamp_focus: null,
+        notice: "Carimbos formados — arraste as caixas flutuantes; depois PNG/PDF.",
+      }));
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        busy: false,
+        stamp_ready: false,
+        notice: err instanceof Error ? err.message : "Falha ao visualizar o carimbo.",
+      }));
+    }
+  }, []);
+
+  const clearStampPreview = useCallback(() => {
+    setState((s) => ({
+      ...s,
+      stamp_pieces: null,
+      stamp_preview_src: null,
+      stamp_ready: false,
     }));
   }, []);
 
@@ -2553,8 +3013,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       setDrawKind,
       setLaunchMode,
       setLaunchOrientation,
+      activateSpecialLaunch,
+      clearSpecialLaunch,
+      nudgeSpecialAzimuth,
+      alignSpecialToPolygon,
       selectModulesInPolygon,
       moveModuleGroup,
+      setModuleGroupRotated,
       updateArea,
       updateObstacle,
       updateLaunch,
@@ -2600,6 +3065,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       resolveAddress,
       restoreVisualizationOriginal,
       updateEtiqueta,
+      patchStampOverlay,
+      resetStampLayout,
+      setStampFocus,
+      refreshStampPreview,
+      clearStampPreview,
       readEarthFooter,
       markUndoPoint,
       endUndoGesture,
@@ -2638,8 +3108,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       setDrawKind,
       setLaunchMode,
       setLaunchOrientation,
+      activateSpecialLaunch,
+      clearSpecialLaunch,
+      nudgeSpecialAzimuth,
+      alignSpecialToPolygon,
       selectModulesInPolygon,
       moveModuleGroup,
+      setModuleGroupRotated,
       updateArea,
       updateObstacle,
       updateLaunch,
@@ -2685,6 +3160,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       patchGeoref,
       resolveAddress,
       updateEtiqueta,
+      patchStampOverlay,
+      resetStampLayout,
+      setStampFocus,
+      refreshStampPreview,
+      clearStampPreview,
       readEarthFooter,
       markUndoPoint,
       endUndoGesture,

@@ -25,6 +25,7 @@ export interface PersistProject {
   layout: ProjectState["layout"];
   georef?: ProjectState["georef"];
   etiqueta?: ProjectState["etiqueta"];
+  stamp_layout?: ProjectState["stamp_layout"];
   image: {
     file: string;
     width_px: number;
@@ -86,6 +87,7 @@ export function serializeProject(state: ProjectState, name: string): PersistProj
     layout: state.layout,
     georef: state.georef,
     etiqueta: serializeEtiqueta(state.etiqueta) as unknown as ProjectState["etiqueta"],
+    stamp_layout: state.stamp_layout,
     image: state.image
       ? {
           file: state.image.file,

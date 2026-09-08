@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useProject } from "../state/ProjectContext";
 import { PersistLibrary } from "./PersistLibrary";
 import { SolarCard } from "./SolarCard";
+import { usePremium } from "../lib/premium";
 import { DRAW_KIND_LABELS, OBSTACLE_LABELS, type Obstacle, type ObstacleType, type RoofArea, type VisualMode } from "../types";
 import { MATERIAL_SLOPE_HINT, normalizeRoofPlane } from "../engine/roofPlane";
-import { lineAzimuthDeg, matchModuleSide } from "../engine/scale";
+import { cardinalDirectionPt, lineAzimuthDeg, matchModuleSide } from "../engine/scale";
 import painelSrc from "../../img/modulo.png";
 import { HelpTip } from "./HelpTip";
-import { StampExport } from "./StampExport";
+import { StampExportPanel } from "./StampExportPanel";
 import {
   catalogLabel,
   catalogToModulePatch,
@@ -87,7 +88,9 @@ function MeasureModuleCard() {
       azimuth_deg: deg,
       roof_plane: { ...normalizeRoofPlane(targetArea.roof_plane), fall_direction_deg: deg },
     });
-    setNotice(`Azimute e queda ${deg}° gravados em «${targetArea.name}» (mesmo rumo da casa).`);
+    setNotice(
+      `Azimute ${deg}° gravado em «${targetArea.name || "área"}». O lançamento nesta água segue este rumo (independente do muro do imóvel).`,
+    );
   };
 
   return (
@@ -95,14 +98,14 @@ function MeasureModuleCard() {
       <h3>
         Medir
         <HelpTip>
-          Se já traçou o muro/divisa na calibração, o azimute aparece aqui. Ou clique 1º e 2º ponto no limite do lote.
-          0° = norte (cima), 90° = leste. A queda da água usa o mesmo número.
+          Se já traçou o muro/divisa na calibração, o azimute aparece aqui. Ou clique 1º e 2º ponto na cumeeira / fileira do telhado.
+          0° = norte (cima), 90° = leste. <b>Usar na água</b> grava o valor só na área selecionada (ou na ativa) — ideal quando um telhado é diagonal em relação ao muro.
         </HelpTip>
       </h3>
       <p className="hint">
         {headingSource === "imóvel"
-          ? "Usando a direção do imóvel da calibração. Pode medir de novo na figura se quiser outro rumo."
-          : "Trace o limite do lote — ou use o rumo já gravado na calibração."}
+          ? "Usando a direção do imóvel da calibração. Meça de novo na cumeeira se esta água for diagonal."
+          : "Trace na cumeeira / fileira desejada. Depois «Usar na água» ou copie o grau no card da área."}
       </p>
       <div className="kpis">
         <div className="kpi">
@@ -127,7 +130,7 @@ function MeasureModuleCard() {
         </span>
       )}
       <div className="btn-row" style={{ marginTop: 10 }}>
-        <button className="btn primary" onClick={() => setTool("ruler")}>
+        <button className={`btn blue ${state.tool === "ruler" ? "on" : ""}`} onClick={() => setTool("ruler")}>
           Medir na figura
         </button>
         <button className="btn ghost" disabled={heading == null || !targetArea} onClick={applyHeading}>
@@ -150,7 +153,8 @@ function AreaFillForm({ a }: { a: RoofArea }) {
         <span className="chip ok">útil</span>
         <HelpTip>
           <b>nome</b> só identifica a água. <b>altura do solo</b> é a cota da cobertura, em metros.
-          <b>recuo</b> afasta os módulos da borda (0 = até o limite). <b>azimute / queda</b> é um só rumo: 0° = norte, 90° = leste. A casa a 93° e o telhado usam o mesmo número.
+          <b>recuo</b> afasta os módulos da borda (0 = até o limite). <b>azimute / queda</b> é o rumo desta água (0° = norte, 90° = leste).
+          Águas ortogonais ao muro (0°/90°/180°/270°) usam o lançamento normal. Caso especial (rumo fora disso): botão <b>Inserir diagonal</b> na barra — escolhe a(s) água(s) com o mesmo azimute e trava Inserir/Editar/Seleção; o muro do imóvel não muda.
           <b>inclinação %</b> é a queda da telha (30% ≈ 16,7°), não graus.
           <b>material</b> só sugere a inclinação inicial. <b>participa do cálculo</b> inclui esta água no lançamento. Excluir apaga o polígono.
         </HelpTip>
@@ -341,7 +345,12 @@ function DrawFillDock() {
   };
 
   return (
-    <div className={`card sticky-fill${collapsed ? " is-collapsed" : ""}`} ref={ref}>
+    <div
+      className={`card sticky-fill${collapsed ? " is-collapsed" : ""}${
+        state.drawKind === "util" || state.drawKind === "restrita" ? " is-active" : ""
+      }`}
+      ref={ref}
+    >
       <div className="sticky-fill-head">
         <h3>
           {area ? "Preencher área útil" : obstacle ? "Preencher restrita" : "Preencher área"}
@@ -437,6 +446,7 @@ function DrawFillDock() {
 }
 
 export function Sidebar() {
+  const premium = usePremium();
   const {
     state,
     setStep,
@@ -468,7 +478,6 @@ export function Sidebar() {
   } = useProject();
   const catalog = useModuleCatalog();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [stampOpen, setStampOpen] = useState(false);
 
   const verifyRulerPx = state.ruler
     ? Math.hypot(state.ruler.b[0] - state.ruler.a[0], state.ruler.b[1] - state.ruler.a[1])
@@ -636,7 +645,6 @@ export function Sidebar() {
               Ir para calibrar
             </button>
           </div>
-          <SolarCard variant="local" />
           <button className="btn primary btn-compact" style={{ marginTop: 8 }} disabled={state.busy} onClick={() => void applyHdAndCalibrate()}>
             Melhorar e calibrar
           </button>
@@ -712,21 +720,27 @@ export function Sidebar() {
               {state.scale.calibrated ? "Régua gerada na figura" : "Aguardando escala"}
             </span>
             <div className="btn-row">
-              <button className="btn danger" onClick={clearScale}>Limpar</button>
+              <button className="btn ghost" onClick={clearScale}>Limpar</button>
             </div>
           </div>
           <div className="card">
             <h3>
               Direção do imóvel
               <HelpTip>
-                Clique as duas pontas do muro, da cumeeira ou da divisa — a linha «horizontal» da casa.
-                A bússola interna gira para esse rumo. A foto não se mexe. Os módulos passam a seguir esse desvio.
+                Clique as duas pontas do muro, da cumeeira ou da divisa — o <b>último clique</b> é a seta (rumo dos módulos).
+                Aceita qualquer cardeal (N, NE, L, SE, S, SO, O, NO). A bússola interna gira para esse rumo; a foto não se mexe.
               </HelpTip>
             </h3>
             <p className="hint">
-              Passe a linha sobre o muro ou a divisa. Casa a 93° → a grade gira 3° em relação à figura.
+              Trace no sentido desejado: o último ponto é a seta. Ex.: clique cima→baixo para sul (~180°).
             </p>
             <div className="kpis">
+              <div className="kpi">
+                <span>direção</span>
+                <strong>
+                  {state.scale.heading ? cardinalDirectionPt(state.scale.heading.azimuth_deg) : "—"}
+                </strong>
+              </div>
               <div className="kpi">
                 <span>azimute</span>
                 <strong>{state.scale.heading ? `${state.scale.heading.azimuth_deg.toFixed(1)}°` : "—"}</strong>
@@ -746,10 +760,10 @@ export function Sidebar() {
                 : "Aguardando o traço do muro / divisa"}
             </span>
             <div className="btn-row" style={{ marginTop: 10 }}>
-              <button className={`btn ${state.tool === "heading" ? "primary" : "ghost"}`} onClick={() => setTool("heading")}>
+              <button className={`btn blue ${state.tool === "heading" ? "on" : ""}`} onClick={() => setTool("heading")}>
                 Traçar muro / divisa
               </button>
-              <button className="btn danger" disabled={!state.scale.heading && !state.headingDraft?.length} onClick={clearHeading}>
+              <button className="btn ghost" disabled={!state.scale.heading && !state.headingDraft?.length} onClick={clearHeading}>
                 Limpar direção
               </button>
             </div>
@@ -806,7 +820,7 @@ export function Sidebar() {
             )}
             <div className="btn-row" style={{ marginTop: 10 }}>
               <button
-                className={`btn ${state.tool === "ruler" ? "primary" : "ghost"}`}
+                className={`btn blue ${state.tool === "ruler" ? "on" : ""}`}
                 disabled={!state.scale.calibrated}
                 onClick={() => setTool("ruler")}
               >
@@ -818,9 +832,8 @@ export function Sidebar() {
             <li>Digite o tamanho da barra original e marque as duas pontas.</li>
             <li>O sistema desenha a régua gerada ao lado da escala — não no canto.</li>
             <li>Medir: confira a barra do Earth e outras cotas — o valor aparece ao vivo.</li>
-            <li>Trace o muro ou a divisa — a bússola interna gira; a figura fica no lugar.</li>
+            <li>Trace o muro ou a divisa no sentido desejado (último ponto = seta; aceita sul e demais cardeais) — a bússola interna gira; a figura fica no lugar.</li>
           </ol>
-          <SolarCard />
           <button className="btn primary" disabled={!state.scale.calibrated} onClick={() => setStep("draw")}>
             Continuar para o telhado
           </button>
@@ -1007,13 +1020,22 @@ export function Sidebar() {
           </div>
           <SelectedModuleCard />
           <MeasureModuleCard />
-          <SolarCard />
           <div className="btn-row">
             <button className="btn primary" disabled={state.busy || !state.scale.calibrated} onClick={calculate}>
               Gerar usina
             </button>
             <button className="btn ghost" onClick={clearLayout}>Limpar usina</button>
           </div>
+          {premium && (
+            <button
+              className="btn primary"
+              style={{ marginTop: 10, width: "100%" }}
+              disabled={!state.layout}
+              onClick={() => setStep("shadow")}
+            >
+              Ir para sombreamento
+            </button>
+          )}
           {state.layout && (
             <div className="card" style={{ marginTop: 12 }}>
               <h3>
@@ -1121,16 +1143,29 @@ export function Sidebar() {
             <h3>
               Carimbos e arquivo
               <HelpTip>
-                Abre a etiqueta da PIENG. Preencha e salve o projeto — os dados ficam no JSON para revisão.
-                Novo projeto / novo cliente: campos do cliente vêm vazios (null no JSON).
+                Passo 7: ajuste card, ticket, logo e bússola na figura; preencha a etiqueta e baixe PNG/PDF.
               </HelpTip>
             </h3>
-            <p className="hint">Etiqueta salva com o projeto. Novo cliente começa em branco.</p>
-            <button className="btn primary" disabled={!state.image} onClick={() => setStampOpen(true)}>
-              Gerar arquivo
+            <p className="hint">Posicione e redimensione os carimbos na figura antes de exportar.</p>
+            <button className="btn primary" disabled={!state.image} onClick={() => setStep("export")}>
+              Ir para Gerar arquivo
             </button>
           </div>
-          <StampExport open={stampOpen} onClose={() => setStampOpen(false)} />
+        </>
+      )}
+
+      {state.step === "export" && <StampExportPanel />}
+
+      {state.step === "shadow" && premium && (
+        <>
+          <h2>Análise de sombreamento</h2>
+          <p className="lead">
+            Módulo premium (teste interno). Posição solar e simulação de sombra sobre a usina gerada no passo 5.
+          </p>
+          <SolarCard />
+          <button className="btn ghost" style={{ marginTop: 10, width: "100%" }} onClick={() => setStep("layout")}>
+            Voltar para a usina
+          </button>
         </>
       )}
     </aside>

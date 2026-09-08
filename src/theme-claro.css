@@ -44,9 +44,46 @@ html.theme-claro .btn.primary {
   color: #fff;
 }
 
+html.theme-claro .btn.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #1d6fa8 55%, transparent),
+    0 6px 16px rgba(29, 111, 168, 0.28);
+}
+
+html.theme-claro .btn.ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, #1d6fa8 16%, #fff);
+  border-color: color-mix(in srgb, #1d6fa8 55%, var(--line));
+  color: #0f2a3d;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #1d6fa8 30%, transparent),
+    0 4px 12px rgba(29, 111, 168, 0.2);
+  transform: translateY(-1px);
+}
+
 html.theme-claro .btn.ghost {
   background: var(--surface-2);
   color: var(--text);
+}
+
+html.theme-claro .btn.blue {
+  background: #1d6fa8;
+  border-color: #1d6fa8;
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(29, 111, 168, 0.25);
+}
+
+html.theme-claro .btn.blue:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow:
+    0 0 0 1px rgba(29, 111, 168, 0.45),
+    0 4px 12px rgba(29, 111, 168, 0.28);
+}
+
+html.theme-claro .btn.blue.on {
+  background: #155a8a;
+  border-color: #0f4a72;
+  filter: none;
 }
 
 html.theme-claro .toolbar-cluster,
@@ -77,6 +114,23 @@ html.theme-claro .card.sticky-fill {
   border-color: #9bb4c8;
   box-shadow: 0 8px 20px rgba(20, 32, 48, 0.12);
   background: var(--surface);
+}
+
+html.theme-claro .card.sticky-fill.is-active label.field {
+  color: #374151;
+}
+
+html.theme-claro .card.sticky-fill.is-active input,
+html.theme-claro .card.sticky-fill.is-active select {
+  color: #111827;
+  background: #f3f6f9;
+  border-color: #9bb4c8;
+  font-weight: 600;
+}
+
+html.theme-claro .card.sticky-fill.is-active input:focus,
+html.theme-claro .card.sticky-fill.is-active select:focus {
+  border-color: #1d6fa8;
 }
 
 html.theme-claro .stamp-form {

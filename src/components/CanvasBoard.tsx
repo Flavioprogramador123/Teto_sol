@@ -1,16 +1,41 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "../state/ProjectContext";
 import type { ModuleOrientation, Pt, ProjectState, RoofArea } from "../types";
-import { barFrom, lineAzimuthDeg, matchModuleSide, mToPx, offsetBar } from "../engine/scale";
+import {
+  barFrom,
+  CARDINAIS_8_ABBREV,
+  cardinalDirectionPt,
+  cardinalIndex,
+  lineAzimuthDeg,
+  matchModuleSide,
+  mToPx,
+  offsetBar,
+} from "../engine/scale";
 import { handlePoints, hitCropHandle, normalizeRect, resizeRect, type CropHandle } from "../engine/imageEdit";
 import { packOrientedPolygon } from "../engine/launch";
 import { modulePolygon, pointInModule, pointInPolygon, polygonsTouchOrOverlap } from "../engine/geometry";
-import { roofGridDeg, rotateAround } from "../engine/roofPlane";
+import { azimuthToGridDeg, roofGridDeg, rotateAround } from "../engine/roofPlane";
+import {
+  clamp01,
+  clampStampScale,
+  DEFAULT_STAMP_LAYOUT,
+  hitStampOverlay,
+  hitStampResizeEdge,
+  hydrateStampLayout,
+  STAMP_OVERLAY_IDS,
+  STAMP_OVERLAY_LABELS,
+  stampOverlayBoxPx,
+} from "../engine/stampLayout";
+import type { StampOverlayId } from "../types";
 import painelSrc from "../../img/modulo.png";
 import { StageTools } from "./StageTools";
 
 /** Desvio da grade (azimute − 90°) no ponto / área sob o cursor. */
 function launchGridDegAt(p: Pt, state: ProjectState): number {
+  // «Inserir diagonal»: grade travada no azimute das águas escolhidas (ignora muro).
+  if (state.special_launch) {
+    return azimuthToGridDeg(state.special_launch.grid_azimuth_deg);
+  }
   const host = state.areas.find(
     (a) => a.active && a.polygon_px.length >= 3 && pointInPolygon(p, a.polygon_px),
   );
@@ -46,6 +71,15 @@ function orientedLaunchRect(from: Pt, to: Pt, gridDeg: number): { corners: Pt[];
       toWorld([minX, maxY]),
     ],
   };
+}
+
+/** Seta no último ponto do traço de direção (rumo do imóvel / módulos). */
+function headingArrowPoints(a: Pt, b: Pt, size: number): string {
+  const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+  const wing = Math.PI / 6.5;
+  const p1: Pt = [b[0] - Math.cos(ang - wing) * size, b[1] - Math.sin(ang - wing) * size];
+  const p2: Pt = [b[0] - Math.cos(ang + wing) * size, b[1] - Math.sin(ang + wing) * size];
+  return `${b[0]},${b[1]} ${p1[0]},${p1[1]} ${p2[0]},${p2[1]}`;
 }
 
 function ModuleSprite({
@@ -178,6 +212,7 @@ export function CanvasBoard() {
     refreshValidity,
     finishOpenDraft,
     moveModuleGroup,
+    setModuleGroupRotated,
     moveVertex,
     moveModule,
     rotateSelectedModules,
@@ -194,6 +229,9 @@ export function CanvasBoard() {
     defaults,
     setNotice,
     patchVisualization,
+    patchStampOverlay,
+    setStampFocus,
+    refreshStampPreview,
   } = useProject();
 
   const stageRef = useRef<HTMLDivElement>(null);
@@ -205,6 +243,7 @@ export function CanvasBoard() {
   const [overScaleHandle, setOverScaleHandle] = useState<number | null>(null);
   const [holdingScale, setHoldingScale] = useState(false);
   const [overVertex, setOverVertex] = useState<{ id: string; index: number } | null>(null);
+  const [overRotateHandle, setOverRotateHandle] = useState(false);
   const [holdingVertex, setHoldingVertex] = useState(false);
   const [closeHereHint, setCloseHereHint] = useState(false);
   const [moduleTape, setModuleTape] = useState<{
@@ -238,23 +277,28 @@ export function CanvasBoard() {
   /** Traço muro/divisa — oculto por padrão; ligar com «view direção». */
   const [showHeading, setShowHeading] = useState(() => localStorage.getItem("pepilene-show-heading") === "1");
   const showModuleNumbers = Boolean(state.visualization?.show_module_numbers);
+  const showCompass = Boolean(state.visualization?.show_compass);
   useEffect(() => {
     // Preferência local → estado do projeto (uma vez, se ainda não ligado)
     if (localStorage.getItem("pepilene-show-mod-nums") === "1" && !state.visualization?.show_module_numbers) {
       patchVisualization({ show_module_numbers: true });
     }
+    if (localStorage.getItem("pepilene-show-compass") === "1" && !state.visualization?.show_compass) {
+      patchVisualization({ show_compass: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
-    if (state.step !== "layout") return;
+    if (state.step !== "layout" && state.step !== "shadow") return;
     if (state.selection.kind === "area" || state.selection.kind === "obstacle" || state.selection.kind === "launch") {
       select({ kind: "none", id: null });
     }
     setOverVertex(null);
     // Revalida módulos ao entrar na usina (limpa vermelho falso antigo)
-    refreshValidity();
+    if (state.step === "layout") refreshValidity();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.step]);
+
   const [areaPicker, setAreaPicker] = useState(false);
   const [launchDraft, setLaunchDraft] = useState<{ corners: Pt[]; w: number; h: number } | null>(null);
   const [selectDraft, setSelectDraft] = useState<{ corners: Pt[]; w: number; h: number } | null>(null);
@@ -265,7 +309,21 @@ export function CanvasBoard() {
   const selectDraftRef = useRef(selectDraft);
   selectDraftRef.current = selectDraft;
   const drag = useRef<{
-    mode: "pan" | "vertex" | "module" | "module-group" | "crop" | "redact" | "scale-handle" | "heading-handle" | "launch-rect" | "select-rect" | null;
+    mode:
+      | "pan"
+      | "vertex"
+      | "module"
+      | "module-group"
+      | "module-group-rotate"
+      | "stamp-move"
+      | "stamp-scale"
+      | "crop"
+      | "redact"
+      | "scale-handle"
+      | "heading-handle"
+      | "launch-rect"
+      | "select-rect"
+      | null;
     sx: number;
     sy: number;
     vx: number;
@@ -279,10 +337,27 @@ export function CanvasBoard() {
     startRect?: { x: number; y: number; w: number; h: number };
     from?: Pt;
     gridDeg?: number;
-    starts?: Array<{ id: string; x_m: number; y_m: number }>;
+    starts?: Array<{ id: string; x_m: number; y_m: number; rotation_deg?: number }>;
     ids?: string[];
     pending?: boolean;
+    pivotM?: { x_m: number; y_m: number };
+    pivotPx?: Pt;
+    startAngleDeg?: number;
+    stampId?: StampOverlayId;
+    stampOrigin?: { x: number; y: number; scale: number };
+    stampEdge?: "e" | "s" | "se";
   }>({ mode: null, sx: 0, sy: 0, vx: 0, vy: 0 });
+
+  /** Troca de ferramenta (ex.: Editar → Inserir bloco) cancela gestos a meio — evita lançar o rascunho errado. */
+  useEffect(() => {
+    drag.current.mode = null;
+    setSelectDraft(null);
+    setLaunchDraft(null);
+    setLaunchPreview([]);
+    setRectPickIds([]);
+    setHoldingVertex(false);
+    setPanning(false);
+  }, [state.tool]);
 
   const image = state.image;
   const scalePoints: Pt[] =
@@ -295,7 +370,13 @@ export function CanvasBoard() {
     state.headingDraft?.length > 0
       ? state.headingDraft
       : state.scale.heading
-        ? [state.scale.heading.point_a, state.scale.heading.point_b]
+        ? (() => {
+            const { point_a, point_b, azimuth_deg } = state.scale.heading;
+            // Garante seta no último ponto = rumo salvo (projetos antigos podem estar invertidos).
+            let d = Math.abs(lineAzimuthDeg(point_a, point_b) - azimuth_deg) % 360;
+            if (d > 180) d = 360 - d;
+            return d <= 90 ? [point_a, point_b] : [point_b, point_a];
+          })()
         : [];
 
   useEffect(() => {
@@ -338,32 +419,89 @@ export function CanvasBoard() {
     return Math.hypot(a[0] - b[0], a[1] - b[1]) <= t;
   };
 
-  const groupIds = state.selection.kind === "module-group" ? state.selection.ids ?? [] : [];
-  const groupBox = useMemo(() => {
+  const groupIds =
+    state.selection.kind === "module-group"
+      ? state.selection.ids ?? []
+      : state.selection.kind === "module" && state.selection.id
+        ? [state.selection.id]
+        : [];
+
+  /** Moldura ativa do grupo (OBB) + puxador circular de giro. */
+  const groupFrame = useMemo(() => {
     if (!groupIds.length || !state.layout || !state.scale.calibrated) return null;
     const mpp = state.scale.meters_per_pixel;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const m of state.layout.best.modules) {
-      if (!groupIds.includes(m.id)) continue;
-      for (const [px, py] of modulePolygon({
-        ...m,
+    const mods = state.layout.best.modules.filter((m) => groupIds.includes(m.id));
+    if (!mods.length) return null;
+    const avgRot = mods.reduce((s, m) => s + (m.rotation_deg ?? 0), 0) / mods.length;
+    let cx = 0;
+    let cy = 0;
+    const worldCorners: Pt[] = [];
+    for (const m of mods) {
+      const poly = modulePolygon({
         x_m: m.x_m / mpp,
         y_m: m.y_m / mpp,
         width_m: m.width_m / mpp,
         height_m: m.height_m / mpp,
-      })) {
-        minX = Math.min(minX, px);
-        minY = Math.min(minY, py);
-        maxX = Math.max(maxX, px);
-        maxY = Math.max(maxY, py);
+        rotation_deg: m.rotation_deg,
+      });
+      for (const pt of poly) {
+        worldCorners.push(pt);
+        cx += pt[0];
+        cy += pt[1];
       }
     }
-    if (!Number.isFinite(minX)) return null;
-    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-  }, [groupIds, state.layout, state.scale.calibrated, state.scale.meters_per_pixel]);
+    const n = worldCorners.length;
+    if (!n) return null;
+    cx /= n;
+    cy /= n;
+    const pivot: Pt = [cx, cy];
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const pt of worldCorners) {
+      const [lx, ly] = rotateAround(pt, pivot, -avgRot);
+      minX = Math.min(minX, lx);
+      minY = Math.min(minY, ly);
+      maxX = Math.max(maxX, lx);
+      maxY = Math.max(maxY, ly);
+    }
+    const pad = 6;
+    minX -= pad;
+    minY -= pad;
+    maxX += pad;
+    maxY += pad;
+    const localCorners: Pt[] = [
+      [minX, minY],
+      [maxX, minY],
+      [maxX, maxY],
+      [minX, maxY],
+    ];
+    const corners = localCorners.map((pt) => rotateAround(pt, pivot, avgRot));
+    const topMidLocal: Pt = [(minX + maxX) / 2, minY];
+    const topMid = rotateAround(topMidLocal, pivot, avgRot);
+    const handleReach = 22;
+    const ux = (corners[0][0] + corners[1][0]) / 2 - cx;
+    const uy = (corners[0][1] + corners[1][1]) / 2 - cy;
+    const ulen = Math.hypot(ux, uy) || 1;
+    const handle: Pt = [topMid[0] + (ux / ulen) * handleReach, topMid[1] + (uy / ulen) * handleReach];
+    const pivotM = {
+      x_m: cx * mpp,
+      y_m: cy * mpp,
+    };
+    return {
+      corners,
+      handle,
+      topMid,
+      pivot,
+      pivotM,
+      rotation_deg: avgRot,
+      x: minX,
+      y: minY,
+      w: maxX - minX,
+      h: maxY - minY,
+    };
+  }, [groupIds.join("|"), state.layout, state.scale.calibrated, state.scale.meters_per_pixel]);
 
   const startGroupDrag = (clientX: number, clientY: number) => {
     const origins = (state.layout?.best.modules ?? [])
@@ -379,6 +517,39 @@ export function CanvasBoard() {
       starts: origins,
     };
   };
+
+  const pointerAngleDeg = (p: Pt, pivot: Pt) =>
+    (Math.atan2(p[0] - pivot[0], -(p[1] - pivot[1])) * 180) / Math.PI;
+
+  const startGroupRotate = (p: Pt, clientX: number, clientY: number) => {
+    if (!groupFrame) return;
+    const origins = (state.layout?.best.modules ?? [])
+      .filter((m) => groupIds.includes(m.id))
+      .map((m) => ({
+        id: m.id,
+        x_m: m.x_m,
+        y_m: m.y_m,
+        rotation_deg: m.rotation_deg ?? 0,
+      }));
+    drag.current = {
+      mode: "module-group-rotate",
+      sx: clientX,
+      sy: clientY,
+      vx: 0,
+      vy: 0,
+      ids: groupIds,
+      starts: origins,
+      pivotM: groupFrame.pivotM,
+      pivotPx: groupFrame.pivot,
+      startAngleDeg: pointerAngleDeg(p, groupFrame.pivot),
+    };
+  };
+
+  const hitRotateHandle = (p: Pt) =>
+    Boolean(groupFrame && closeEnough(p, groupFrame.handle, 16));
+
+  const pointInGroupPoly = (p: Pt) =>
+    Boolean(groupFrame && pointInPolygon(p, groupFrame.corners));
 
   const startSelectWindow = (p: Pt, clientX: number, clientY: number) => {
     const gridDeg = launchGridDegAt(p, state);
@@ -396,14 +567,7 @@ export function CanvasBoard() {
     setLaunchPreview([]);
   };
 
-  const pointInGroupBox = (p: Pt) =>
-    Boolean(
-      groupBox &&
-        p[0] >= groupBox.x &&
-        p[0] <= groupBox.x + groupBox.w &&
-        p[1] >= groupBox.y &&
-        p[1] <= groupBox.y + groupBox.h,
-    );
+  const pointInGroupBox = (p: Pt) => pointInGroupPoly(p) || hitRotateHandle(p);
 
   const finishDraft = () => {
     finishOpenDraft();
@@ -423,6 +587,7 @@ export function CanvasBoard() {
       state.scale.meters_per_pixel,
       "preview",
       state.layout?.best.modules ?? [],
+      state.special_launch ? azimuthToGridDeg(state.special_launch.grid_azimuth_deg) : null,
     );
     const mpp = state.scale.meters_per_pixel;
     setLaunchPreview(
@@ -449,6 +614,13 @@ export function CanvasBoard() {
         setSelectDraft(null);
         setLaunchPreview([]);
         setRectPickIds([]);
+        if (
+          state.selection.kind === "module" ||
+          state.selection.kind === "module-group"
+        ) {
+          select({ kind: "none", id: null });
+        }
+        if (state.step === "export" && state.stamp_focus) setStampFocus(null);
         if (state.tool === "scale" && state.scaleDraft.length === 1) setScaleDraft([]);
         if (state.tool === "heading" && state.headingDraft.length === 1) setHeadingDraft([]);
         if (state.tool === "ruler") {
@@ -499,16 +671,18 @@ export function CanvasBoard() {
     setRuler,
     setScaleDraft,
     setTool,
+    setStampFocus,
     state.draft,
     state.scaleDraft.length,
     state.selection.kind,
+    state.stamp_focus,
     state.step,
     state.tool,
   ]);
 
   const hitVertex = (p: Pt) => {
-    const onUsina = state.step === "layout";
-    // Na usina, telhado/obstáculo ficam só na camada visual — sem editar vértices.
+    const onUsina = state.step === "layout" || state.step === "shadow" || state.step === "export";
+    // Na usina/sombreamento, telhado/obstáculo ficam só na camada visual — sem editar vértices.
     const canEditRoof =
       !onUsina &&
       (state.tool === "select" ||
@@ -711,6 +885,73 @@ export function CanvasBoard() {
     if (!p) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 
+    // Passo 7: caixas flutuantes têm prioridade — só pan com botão do meio / Alt / clique no vazio
+    if (state.step === "export") {
+      const layout = hydrateStampLayout(state.stamp_layout ?? DEFAULT_STAMP_LAYOUT);
+      const tol = 14 / (view.zoom * fit);
+      const wantPan = e.button === 1 || e.altKey;
+
+      if (!wantPan) {
+        const focus = state.stamp_focus;
+        const edgeTarget =
+          focus && layout[focus].visible
+            ? hitStampResizeEdge(p, focus, layout, image.width_px, image.height_px, tol)
+            : null;
+        if (focus && edgeTarget) {
+          drag.current = {
+            mode: "stamp-scale",
+            sx: e.clientX,
+            sy: e.clientY,
+            vx: 0,
+            vy: 0,
+            stampId: focus,
+            stampOrigin: { x: layout[focus].x, y: layout[focus].y, scale: layout[focus].scale },
+            stampEdge: edgeTarget,
+            from: p,
+          };
+          return;
+        }
+        const hit = hitStampOverlay(p, layout, image.width_px, image.height_px, {
+          includeCompass: Boolean(state.visualization?.show_compass),
+        });
+        if (hit) {
+          const edgeOnHit = hitStampResizeEdge(p, hit, layout, image.width_px, image.height_px, tol);
+          setStampFocus(hit);
+          if (edgeOnHit) {
+            drag.current = {
+              mode: "stamp-scale",
+              sx: e.clientX,
+              sy: e.clientY,
+              vx: 0,
+              vy: 0,
+              stampId: hit,
+              stampOrigin: { x: layout[hit].x, y: layout[hit].y, scale: layout[hit].scale },
+              stampEdge: edgeOnHit,
+              from: p,
+            };
+            return;
+          }
+          drag.current = {
+            mode: "stamp-move",
+            sx: e.clientX,
+            sy: e.clientY,
+            vx: 0,
+            vy: 0,
+            stampId: hit,
+            stampOrigin: { x: layout[hit].x, y: layout[hit].y, scale: layout[hit].scale },
+            from: p,
+          };
+          return;
+        }
+        setStampFocus(null);
+      }
+
+      // Vazio / Alt / meio → move o mapa
+      drag.current = { mode: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
+      setPanning(true);
+      return;
+    }
+
     if (e.button === 1 || state.tool === "pan" || e.altKey) {
       drag.current = { mode: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
       setPanning(true);
@@ -864,8 +1105,13 @@ export function CanvasBoard() {
     }
 
     if (state.tool === "group" || (state.tool === "select" && state.step === "layout")) {
-      // Arrastar bloco já selecionado
-      if (groupIds.length && pointInGroupBox(p)) {
+      // Puxador circular: gira o bloco inteiro
+      if (groupIds.length && hitRotateHandle(p)) {
+        startGroupRotate(p, e.clientX, e.clientY);
+        return;
+      }
+      // Arrastar bloco já selecionado (polígono aceso)
+      if (groupIds.length && pointInGroupPoly(p)) {
         startGroupDrag(e.clientX, e.clientY);
         return;
       }
@@ -874,7 +1120,8 @@ export function CanvasBoard() {
         pickModule(mod, e);
         return;
       }
-      // Caixa de seleção estilo AutoCAD (arraste)
+      // Clique fora: some o polígono / desativa seleção; arraste abre janela nova
+      if (selectedModuleIds().length) select({ kind: "none", id: null });
       startSelectWindow(p, e.clientX, e.clientY);
       return;
     }
@@ -914,7 +1161,11 @@ export function CanvasBoard() {
     const v = hitVertex(p);
     // Na usina, módulos têm prioridade sobre qualquer alça de lançamento
     if (state.step === "layout") {
-      if (groupIds.length && pointInGroupBox(p)) {
+      if (groupIds.length && hitRotateHandle(p)) {
+        startGroupRotate(p, e.clientX, e.clientY);
+        return;
+      }
+      if (groupIds.length && pointInGroupPoly(p)) {
         startGroupDrag(e.clientX, e.clientY);
         return;
       }
@@ -943,7 +1194,11 @@ export function CanvasBoard() {
       setHoldingVertex(true);
       return;
     }
-    if (groupIds.length && pointInGroupBox(p)) {
+    if (groupIds.length && hitRotateHandle(p)) {
+      startGroupRotate(p, e.clientX, e.clientY);
+      return;
+    }
+    if (groupIds.length && pointInGroupPoly(p)) {
       startGroupDrag(e.clientX, e.clientY);
       return;
     }
@@ -988,6 +1243,9 @@ export function CanvasBoard() {
     if (state.tool === "heading") {
       const hit = headingPoints.findIndex((pt) => closeEnough(p, pt, 16));
       setOverScaleHandle(hit >= 0 ? hit : null);
+    }
+    if (drag.current.mode == null) {
+      setOverRotateHandle(Boolean(groupIds.length && hitRotateHandle(p)));
     }
     if (drag.current.mode == null && state.draft.length === 0) {
       const hover = hitVertex(p);
@@ -1044,6 +1302,75 @@ export function CanvasBoard() {
       const dy = (e.clientY - drag.current.sy) / (view.zoom * fit) * state.scale.meters_per_pixel;
       moveModuleGroup(drag.current.ids, drag.current.starts, dx, dy);
     }
+    if (
+      drag.current.mode === "stamp-move" &&
+      drag.current.stampId &&
+      drag.current.stampOrigin &&
+      drag.current.from &&
+      image
+    ) {
+      const dx = (p[0] - drag.current.from[0]) / image.width_px;
+      const dy = (p[1] - drag.current.from[1]) / image.height_px;
+      patchStampOverlay(drag.current.stampId, {
+        x: clamp01(drag.current.stampOrigin.x + dx),
+        y: clamp01(drag.current.stampOrigin.y + dy),
+      });
+    }
+    if (
+      drag.current.mode === "stamp-scale" &&
+      drag.current.stampId &&
+      drag.current.stampOrigin &&
+      drag.current.from &&
+      image
+    ) {
+      const layout = hydrateStampLayout(state.stamp_layout ?? DEFAULT_STAMP_LAYOUT);
+      const box0 = stampOverlayBoxPx(
+        drag.current.stampId,
+        {
+          ...layout,
+          [drag.current.stampId]: {
+            ...layout[drag.current.stampId],
+            scale: drag.current.stampOrigin.scale,
+          },
+        },
+        image.width_px,
+        image.height_px,
+      );
+      const edge = drag.current.stampEdge ?? "se";
+      let ratio = 1;
+      if (edge === "e") {
+        ratio = Math.max(0.2, (p[0] - box0.x) / Math.max(1, box0.w));
+      } else if (edge === "s") {
+        ratio = Math.max(0.2, (p[1] - box0.y) / Math.max(1, box0.h));
+      } else {
+        const startDist = Math.hypot(drag.current.from[0] - box0.x, drag.current.from[1] - box0.y) || 1;
+        const nowDist = Math.hypot(p[0] - box0.x, p[1] - box0.y);
+        ratio = nowDist / startDist;
+      }
+      patchStampOverlay(drag.current.stampId, {
+        scale: clampStampScale(drag.current.stampOrigin.scale * ratio),
+      });
+    }
+    if (
+      drag.current.mode === "module-group-rotate" &&
+      drag.current.ids &&
+      drag.current.starts &&
+      drag.current.pivotM &&
+      drag.current.pivotPx &&
+      drag.current.startAngleDeg != null
+    ) {
+      const origins = drag.current.starts.map((o) => ({
+        id: o.id,
+        x_m: o.x_m,
+        y_m: o.y_m,
+        rotation_deg: o.rotation_deg ?? 0,
+      }));
+      const now = pointerAngleDeg(p, drag.current.pivotPx);
+      let delta = now - drag.current.startAngleDeg;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      setModuleGroupRotated(drag.current.ids, origins, drag.current.pivotM, delta);
+    }
     if (drag.current.mode === "launch-rect" && drag.current.from) {
       const gridDeg = drag.current.gridDeg ?? 0;
       const draft = orientedLaunchRect(drag.current.from, p, gridDeg);
@@ -1092,6 +1419,7 @@ export function CanvasBoard() {
     setHoldingScale(false);
     setHoldingVertex(false);
     endUndoGesture();
+    // Peças flutuantes já acompanham o arraste — sem reformar o mapa.
   };
 
   useEffect(() => {
@@ -1148,21 +1476,70 @@ export function CanvasBoard() {
   /** Checkbox liga o traço salvo. Ferramenta Direção / rascunho em curso também mostram. */
   const headingVisible =
     showHeading || state.tool === "heading" || (state.headingDraft?.length ?? 0) > 0;
+  /** View bússola — widget na tela (e no Gerar arquivo quando ligado). */
+  const compassVisible =
+    showCompass || state.tool === "heading" || (state.headingDraft?.length ?? 0) > 0;
 
   return (
     <div className="stage-wrap">
-      {state.scale.heading && headingVisible && (
-        <div className="site-compass" title="Bússola do imóvel — a figura não girou">
-          <svg viewBox="0 0 72 72" aria-hidden>
-            <circle cx="36" cy="36" r="32" fill="rgba(12,16,22,0.82)" stroke="#7ec8ff" strokeWidth="1.6" />
-            <text x="36" y="14" textAnchor="middle" fill="#c9d4e0" fontSize="8" fontWeight="700">N</text>
-            <g transform={`rotate(${state.scale.heading.azimuth_deg - 90} 36 36)`}>
-              <line x1="12" y1="36" x2="60" y2="36" stroke="#7ec8ff" strokeWidth="3" strokeLinecap="round" />
-              <polygon points="60,36 52,32 52,40" fill="#7ec8ff" />
+      {state.scale.heading && compassVisible && state.step !== "export" && (
+        <div className="site-compass" title="Bússola do imóvel — cardeais na figura (N cima); a seta é o rumo dos módulos">
+          <svg viewBox="0 0 88 88" aria-hidden>
+            <circle cx="44" cy="44" r="38" fill="rgba(12,16,22,0.88)" stroke="#7ec8ff" strokeWidth="1.6" />
+            <circle cx="44" cy="44" r="28" fill="none" stroke="#3a5a72" strokeWidth="1" />
+            {CARDINAIS_8_ABBREV.map((label, i) => {
+              const deg = i * 45;
+              const rad = (deg * Math.PI) / 180;
+              const major = i % 2 === 0;
+              const rTickIn = major ? 28 : 30;
+              const rTickOut = major ? 36 : 34;
+              const rLabel = major ? 40.5 : 40;
+              const x1 = 44 + Math.sin(rad) * rTickIn;
+              const y1 = 44 - Math.cos(rad) * rTickIn;
+              const x2 = 44 + Math.sin(rad) * rTickOut;
+              const y2 = 44 - Math.cos(rad) * rTickOut;
+              const lx = 44 + Math.sin(rad) * rLabel;
+              const ly = 44 - Math.cos(rad) * rLabel;
+              const active = cardinalIndex(state.scale.heading!.azimuth_deg) === i;
+              return (
+                <g key={label}>
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke={active ? "#f0c14b" : major ? "#9db4c8" : "#5a7084"}
+                    strokeWidth={active ? 2.2 : major ? 1.6 : 1}
+                  />
+                  <text
+                    x={lx}
+                    y={ly}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill={active ? "#f0c14b" : major ? "#e8f0f8" : "#8aa0b4"}
+                    fontSize={major ? 9 : 6.5}
+                    fontWeight={active ? 800 : 700}
+                  >
+                    {label}
+                  </text>
+                </g>
+              );
+            })}
+            <g transform={`rotate(${state.scale.heading.azimuth_deg - 90} 44 44)`}>
+              <line x1="18" y1="44" x2="66" y2="44" stroke="#7ec8ff" strokeWidth="3" strokeLinecap="round" />
+              <polygon points="70,44 60,39 60,49" fill="#7ec8ff" />
+              <circle cx="44" cy="44" r="3.2" fill="#7ec8ff" stroke="#0a121c" strokeWidth="1" />
             </g>
           </svg>
           <span>
-            desvio {(state.scale.heading.azimuth_deg - 90).toFixed(1)}°
+            {cardinalDirectionPt(state.scale.heading.azimuth_deg)}
+            <small>
+              {" "}
+              · {state.scale.heading.azimuth_deg.toFixed(1)}° · desvio{" "}
+              {(state.scale.heading.azimuth_deg - 90 >= 0 ? "+" : "") +
+                (state.scale.heading.azimuth_deg - 90).toFixed(1)}
+              °
+            </small>
           </span>
         </div>
       )}
@@ -1201,6 +1578,32 @@ export function CanvasBoard() {
           className="layer-toggle"
           title={
             state.scale.heading
+              ? "Bússola do imóvel na tela e no Gerar arquivo (quando ligado)"
+              : "Trace a direção do imóvel na calibração para liberar a bússola"
+          }
+        >
+          <input
+            type="checkbox"
+            checked={showCompass}
+            onChange={(e) => {
+              const on = e.target.checked;
+              patchVisualization({ show_compass: on });
+              localStorage.setItem("pepilene-show-compass", on ? "1" : "0");
+              if (state.step === "export") {
+                patchStampOverlay("compass", { visible: on });
+                if (on && state.stamp_ready) void refreshStampPreview();
+              }
+              if (on && !state.scale.heading) {
+                setNotice("Ainda não há direção traçada. Use «Traçar muro / divisa» na calibração.");
+              }
+            }}
+          />
+          view bússola
+        </label>
+        <label
+          className="layer-toggle"
+          title={
+            state.scale.heading
               ? "Mostra o traço do muro/divisa e o azimute na figura"
               : "Trace a direção do imóvel na calibração para poder exibir o traço"
           }
@@ -1230,7 +1633,7 @@ export function CanvasBoard() {
       </div>
       <div
         ref={stageRef}
-        className={`stage ${state.tool === "pan" ? "pan" : ""} ${state.tool === "launch" ? "launch" : ""} ${state.tool === "group" ? "group" : ""} ${panning || holdingScale || holdingVertex ? "panning" : ""} ${overVertex != null || ((state.tool === "scale" || state.tool === "heading") && overScaleHandle != null) ? "grab" : ""} ${overVertex != null ? "vertex-hover" : ""}`}
+        className={`stage ${state.tool === "pan" ? "pan" : ""} ${state.tool === "launch" ? "launch" : ""} ${state.tool === "group" ? "group" : ""} ${panning || holdingScale || holdingVertex || drag.current.mode === "module-group-rotate" ? "panning" : ""} ${overVertex != null || overRotateHandle || ((state.tool === "scale" || state.tool === "heading") && overScaleHandle != null) ? "grab" : ""} ${overVertex != null ? "vertex-hover" : ""} ${overRotateHandle || drag.current.mode === "module-group-rotate" ? "rotate-hover" : ""}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -1311,8 +1714,9 @@ export function CanvasBoard() {
                   strokeWidth={1.5 * ui}
                 />
               ))}
-              {showAreas && state.areas.map((a) => {
+              {showAreas && state.step !== "export" && state.areas.map((a) => {
                 const on = state.selection.kind === "area" && state.selection.id === a.id;
+                const diagonal = Boolean(state.special_launch?.area_ids.includes(a.id));
                 return (
                   <polygon
                     key={a.id}
@@ -1320,16 +1724,19 @@ export function CanvasBoard() {
                     fill={
                       on
                         ? "rgba(12, 86, 42, 0.48)"
-                        : a.active
-                          ? "rgba(61,186,122,0.18)"
-                          : "rgba(139,149,163,0.12)"
+                        : diagonal
+                          ? "rgba(201, 162, 39, 0.28)"
+                          : a.active
+                            ? "rgba(61,186,122,0.18)"
+                            : "rgba(139,149,163,0.12)"
                     }
-                    stroke={on ? "#0a3d22" : "#3dba7a"}
-                    strokeWidth={(on ? 2.6 : 1.6) * ui}
+                    stroke={on ? "#0a3d22" : diagonal ? "#c9a227" : "#3dba7a"}
+                    strokeWidth={(on || diagonal ? 2.6 : 1.6) * ui}
+                    strokeDasharray={diagonal && !on ? `${7 * ui} ${4 * ui}` : undefined}
                   />
                 );
               })}
-              {showAreas && state.step !== "layout" && state.layout?.usable_polygons_px.map((u) =>
+              {showAreas && state.step !== "layout" && state.step !== "shadow" && state.step !== "export" && state.layout?.usable_polygons_px.map((u) =>
                 u.polygon_px.length ? (
                   <polygon
                     key={`u-${u.areaId}`}
@@ -1341,25 +1748,8 @@ export function CanvasBoard() {
                   />
                 ) : null,
               )}
-              {/* Lançamentos: só na ferramenta «Inserir bloco» — na edição da usina não sobrepõem os módulos */}
-              {state.tool === "launch" &&
-                (state.launches ?? [])
-                  .filter((z) => (state.layout?.best.modules ?? []).some((m) => m.launch_id === z.id))
-                  .map((z) => {
-                    const on = state.selection.kind === "launch" && state.selection.id === z.id;
-                    return (
-                      <polygon
-                        key={z.id}
-                        points={z.polygon_px.map((p) => p.join(",")).join(" ")}
-                        fill={on ? "rgba(201, 162, 39, 0.22)" : "rgba(201, 162, 39, 0.08)"}
-                        stroke={on ? "#8a6d12" : "#c9a227"}
-                        strokeWidth={(on ? 2.4 : 1.6) * ui}
-                        strokeDasharray={`${7 * ui} ${5 * ui}`}
-                        style={{ pointerEvents: "none" }}
-                      />
-                    );
-                  })}
-              {showAreas && state.visualization?.show_obstacles !== false && state.obstacles.map((o) => {
+              {/* Tracejado só enquanto arrasta o retângulo — some ao soltar / concluir o lançamento */}
+              {showAreas && state.step !== "export" && state.visualization?.show_obstacles !== false && state.obstacles.map((o) => {
                 const on = state.selection.kind === "obstacle" && state.selection.id === o.id;
                 return (
                   <polygon
@@ -1425,18 +1815,137 @@ export function CanvasBoard() {
                   />
                 );
               })}
-              {groupBox && (
-                <rect
-                  x={groupBox.x - 4 * ui}
-                  y={groupBox.y - 4 * ui}
-                  width={groupBox.w + 8 * ui}
-                  height={groupBox.h + 8 * ui}
-                  fill="rgba(243, 193, 91, 0.08)"
-                  stroke="#fff4d2"
-                  strokeWidth={1.8 * ui}
-                  strokeDasharray={`${8 * ui} ${5 * ui}`}
-                />
+              {groupFrame && (
+                <g className="group-frame" pointerEvents="none">
+                  <polygon
+                    points={groupFrame.corners.map((c) => c.join(",")).join(" ")}
+                    fill="rgba(243, 193, 91, 0.16)"
+                    stroke="#fff4d2"
+                    strokeWidth={2.2 * ui}
+                    strokeDasharray={`${7 * ui} ${4 * ui}`}
+                  />
+                  <line
+                    x1={groupFrame.topMid[0]}
+                    y1={groupFrame.topMid[1]}
+                    x2={groupFrame.handle[0]}
+                    y2={groupFrame.handle[1]}
+                    stroke="#fff4d2"
+                    strokeWidth={1.6 * ui}
+                  />
+                  <circle
+                    cx={groupFrame.handle[0]}
+                    cy={groupFrame.handle[1]}
+                    r={7 * ui}
+                    fill="#1a2230"
+                    stroke="#f3c15b"
+                    strokeWidth={2.2 * ui}
+                    style={{ pointerEvents: "auto", cursor: "grab" }}
+                  />
+                  <circle
+                    cx={groupFrame.handle[0]}
+                    cy={groupFrame.handle[1]}
+                    r={2.4 * ui}
+                    fill="#f3c15b"
+                    style={{ pointerEvents: "none" }}
+                  />
+                </g>
               )}
+              {state.step === "export" &&
+                image &&
+                STAMP_OVERLAY_IDS.map((id) => {
+                  const layout = hydrateStampLayout(state.stamp_layout ?? DEFAULT_STAMP_LAYOUT);
+                  const o = layout[id];
+                  if (!o.visible) return null;
+                  if (id === "compass" && !showCompass) return null;
+                  const b = stampOverlayBoxPx(id, layout, image.width_px, image.height_px);
+                  const on = state.stamp_focus === id;
+                  const piece = state.stamp_pieces?.[id];
+                  const formed = Boolean(piece);
+                  const isCompass = id === "compass";
+                  // Bússola formada: sem polígono azul — só a rosa (borda só quando selecionada).
+                  const showFrame = !isCompass || !formed || on;
+                  return (
+                    <g key={`stamp-${id}`} className="stamp-overlay" style={{ cursor: "move" }}>
+                      {piece && (
+                        <image
+                          href={piece}
+                          x={b.x}
+                          y={b.y}
+                          width={b.w}
+                          height={b.h}
+                          preserveAspectRatio="none"
+                          style={{ pointerEvents: "none" }}
+                        />
+                      )}
+                      <rect
+                        x={b.x}
+                        y={b.y}
+                        width={b.w}
+                        height={b.h}
+                        fill={formed ? "transparent" : on ? "rgba(126, 200, 255, 0.18)" : "rgba(12, 20, 32, 0.28)"}
+                        stroke={showFrame ? (on ? "#7ec8ff" : formed ? "rgba(126,200,255,0.45)" : "#9db4c8") : "none"}
+                        strokeWidth={showFrame ? (on ? 2.4 : 1.6) * ui : 0}
+                        strokeDasharray={formed && !on ? undefined : on ? undefined : `${8 * ui} ${5 * ui}`}
+                      />
+                      {!formed && (
+                        <text
+                          x={b.x + 8 * ui}
+                          y={b.y + 16 * ui}
+                          fill="#e8f2ff"
+                          fontSize={12 * ui}
+                          fontWeight={700}
+                          style={{ pointerEvents: "none" }}
+                        >
+                          {STAMP_OVERLAY_LABELS[id]}
+                        </text>
+                      )}
+                      {formed && on && (
+                        <text
+                          x={b.x + 8 * ui}
+                          y={b.y - 6 * ui}
+                          fill="#7ec8ff"
+                          fontSize={11 * ui}
+                          fontWeight={700}
+                          style={{ pointerEvents: "none" }}
+                        >
+                          {STAMP_OVERLAY_LABELS[id]}
+                        </text>
+                      )}
+                      {on && (
+                        <>
+                          {/* Aresta direita */}
+                          <rect
+                            x={b.x + b.w - 4 * ui}
+                            y={b.y}
+                            width={8 * ui}
+                            height={b.h}
+                            fill="rgba(126,200,255,0.25)"
+                            style={{ pointerEvents: "none" }}
+                          />
+                          {/* Aresta inferior */}
+                          <rect
+                            x={b.x}
+                            y={b.y + b.h - 4 * ui}
+                            width={b.w}
+                            height={8 * ui}
+                            fill="rgba(126,200,255,0.25)"
+                            style={{ pointerEvents: "none" }}
+                          />
+                          {/* Canto SE */}
+                          <rect
+                            x={b.x + b.w - 10 * ui}
+                            y={b.y + b.h - 10 * ui}
+                            width={10 * ui}
+                            height={10 * ui}
+                            fill="#7ec8ff"
+                            stroke="#0a121c"
+                            strokeWidth={1 * ui}
+                          />
+                        </>
+                      )}
+                    </g>
+                  );
+                })}
               {[...state.areas, ...state.obstacles, ...(state.launches ?? [])]
                 .filter((item) => {
                   const isLaunch = (state.launches ?? []).some((z) => z.id === item.id);
@@ -1561,7 +2070,9 @@ export function CanvasBoard() {
                     })()}
                 </g>
               )}
-              {state.step === "scale" && scalePoints.length > 0 && (
+              {state.step === "scale" &&
+                (state.tool === "scale" || state.scaleDraft.length > 0) &&
+                scalePoints.length > 0 && (
                 <g>
                   {scalePoints.length === 2 && (
                     <line
@@ -1598,7 +2109,9 @@ export function CanvasBoard() {
                   )}
                 </g>
               )}
-              {state.step === "scale" && generatedBar && (
+              {state.step === "scale" &&
+                state.tool === "scale" &&
+                generatedBar && (
                   <ScaleDimension
                     a={generatedBar.a}
                     b={generatedBar.b}
@@ -1607,7 +2120,7 @@ export function CanvasBoard() {
                     ui={ui}
                   />
                 )}
-              {state.step === "scale" && checkBar && (
+              {state.step === "scale" && state.tool === "scale" && checkBar && (
                 <ScaleDimension
                   a={checkBar.a}
                   b={checkBar.b}
@@ -1619,15 +2132,24 @@ export function CanvasBoard() {
               {headingVisible && headingPoints.length > 0 && (
                 <g>
                   {headingPoints.length === 2 && (
-                    <line
-                      x1={headingPoints[0][0]}
-                      y1={headingPoints[0][1]}
-                      x2={headingPoints[1][0]}
-                      y2={headingPoints[1][1]}
-                      stroke="#7ec8ff"
-                      strokeWidth={3.6 * ui}
-                      strokeLinecap="round"
-                    />
+                    <>
+                      <line
+                        x1={headingPoints[0][0]}
+                        y1={headingPoints[0][1]}
+                        x2={headingPoints[1][0]}
+                        y2={headingPoints[1][1]}
+                        stroke="#7ec8ff"
+                        strokeWidth={3.6 * ui}
+                        strokeLinecap="round"
+                      />
+                      <polygon
+                        points={headingArrowPoints(headingPoints[0], headingPoints[1], 16 * ui)}
+                        fill="#7ec8ff"
+                        stroke="#0a121c"
+                        strokeWidth={1.2 * ui}
+                        strokeLinejoin="round"
+                      />
+                    </>
                   )}
                   {headingPoints.map((pt, i) => (
                     <circle
@@ -1635,17 +2157,23 @@ export function CanvasBoard() {
                       cx={pt[0]}
                       cy={pt[1]}
                       r={((state.tool === "heading" && overScaleHandle === i ? 8 : 6.5)) * ui}
-                      fill={state.tool === "heading" && overScaleHandle === i ? "#e8f6ff" : "#7ec8ff"}
+                      fill={
+                        i === headingPoints.length - 1 && headingPoints.length === 2
+                          ? "#e8f6ff"
+                          : state.tool === "heading" && overScaleHandle === i
+                            ? "#e8f6ff"
+                            : "#7ec8ff"
+                      }
                       stroke="#1a1408"
                       strokeWidth={1.4 * ui}
                     />
                   ))}
                   {headingPoints.length === 2 && (
                     <text
-                      x={(headingPoints[0][0] + headingPoints[1][0]) / 2}
-                      y={(headingPoints[0][1] + headingPoints[1][1]) / 2 - 22 * ui}
+                      x={headingPoints[1][0]}
+                      y={headingPoints[1][1] - 26 * ui}
                       fill="#ccebff"
-                      fontSize={24 * ui}
+                      fontSize={22 * ui}
                       fontWeight={800}
                       textAnchor="middle"
                       stroke="#0a121c"
@@ -1653,7 +2181,7 @@ export function CanvasBoard() {
                       paintOrder="stroke"
                     >
                       {state.scale.heading
-                        ? `Direção imóvel · ${state.scale.heading.azimuth_deg.toFixed(1)}° · desvio ${(state.scale.heading.azimuth_deg - 90).toFixed(1)}°`
+                        ? `Direção imóvel · ${cardinalDirectionPt(state.scale.heading.azimuth_deg)} · ${state.scale.heading.azimuth_deg.toFixed(1)}° · desvio ${(state.scale.heading.azimuth_deg - 90).toFixed(1)}°`
                         : "Direção imóvel · traçando…"}
                     </text>
                   )}

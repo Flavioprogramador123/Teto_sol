@@ -19,12 +19,47 @@ export function lineFallDeg(a: Pt, b: Pt): number {
   return lineAzimuthDeg(a, b);
 }
 
-/** Rumo do muro/divisa: escolhe o sentido mais perto do leste para a bússola do imóvel. */
+/**
+ * Rumo do traço A→B (seta no último ponto).
+ * Segue o clique: aceita todos os cardeais (N, NE, L, SE, S, SO, O, NO) — sem forçar o leste.
+ */
 export function buildingHeadingDeg(a: Pt, b: Pt): number {
-  const az = lineAzimuthDeg(a, b);
-  const flipped = (az + 180) % 360;
-  const distEast = (d: number) => Math.min(Math.abs(d - 90), 360 - Math.abs(d - 90));
-  return distEast(flipped) < distEast(az) ? flipped : az;
+  return lineAzimuthDeg(a, b);
+}
+
+/** Mantém A→B e o azimute do traço (último ponto = direção dos módulos). */
+export function orderHeadingEndpoints(a: Pt, b: Pt): { point_a: Pt; point_b: Pt; azimuth_deg: number } {
+  return {
+    point_a: a,
+    point_b: b,
+    azimuth_deg: Number(lineAzimuthDeg(a, b).toFixed(1)),
+  };
+}
+
+const CARDINAIS_8 = [
+  "norte",
+  "nordeste",
+  "leste",
+  "sudeste",
+  "sul",
+  "sudoeste",
+  "oeste",
+  "noroeste",
+] as const;
+
+/** Abreviações PT-BR na rosa dos ventos (N, NE, L, SE, S, SO, O, NO). */
+export const CARDINAIS_8_ABBREV = ["N", "NE", "L", "SE", "S", "SO", "O", "NO"] as const;
+
+/** 0° = norte, horário → rótulo de 8 pontos (ex.: 315° → noroeste). */
+export function cardinalDirectionPt(azimuthDeg: number): (typeof CARDINAIS_8)[number] {
+  const d = ((Number(azimuthDeg) % 360) + 360) % 360;
+  const idx = Math.round(d / 45) % 8;
+  return CARDINAIS_8[idx];
+}
+
+export function cardinalIndex(azimuthDeg: number): number {
+  const d = ((Number(azimuthDeg) % 360) + 360) % 360;
+  return Math.round(d / 45) % 8;
 }
 
 export function computeScale(a: Pt, b: Pt, realMeters: number): ScaleInfo {

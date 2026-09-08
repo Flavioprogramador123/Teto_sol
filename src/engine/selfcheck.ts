@@ -1,5 +1,6 @@
 import { generateLayout } from "./layout";
-import { buildingHeadingDeg, computeScale, lineAzimuthDeg } from "./scale";
+import { sortModulesReadingOrder } from "./launch";
+import { buildingHeadingDeg, cardinalDirectionPt, computeScale, lineAzimuthDeg, orderHeadingEndpoints } from "./scale";
 import { DEFAULT_MODULE } from "../types";
 import { polygonsTouchOrOverlap, rectPolygon } from "./geometry";
 import { DEFAULT_ROOF_PLANE, fallAxis, roofGridDeg, roofPlaneOf, slopeToDegrees, surfaceFactor } from "./roofPlane";
@@ -116,8 +117,24 @@ const geoDd = parseGeorefText("Câmera: 1.074 m -16.324300, -48.925462 6 m");
 assert(geoDd.confidence === "high", "formato graus decimais");
 assert(Math.abs((geoDd.latitude_deg ?? 0) + 16.3243) < 1e-4, "lat DD");
 assert(Math.abs(lineAzimuthDeg([0, 0], [1, 0]) - 90) < 1e-6, "leste = 90°");
-assert(Math.abs(buildingHeadingDeg([0, 0], [1, 0.05]) - buildingHeadingDeg([1, 0.05], [0, 0])) < 1e-6, "muro nos dois sentidos");
+assert(Math.abs(lineAzimuthDeg([0, 0], [0, 1]) - 180) < 1e-6, "sul = 180°");
+assert(Math.abs(buildingHeadingDeg([0, 0], [0, 1]) - 180) < 1e-6, "rumo aceita sul");
+assert(Math.abs(buildingHeadingDeg([0, 1], [0, 0]) - 0) < 1e-6, "rumo aceita norte (sentido do clique)");
+{
+  const sul = orderHeadingEndpoints([0, 0], [0, 10]);
+  assert(sul.point_b[1] > sul.point_a[1], "seta para o sul no último ponto");
+  assert(Math.abs(sul.azimuth_deg - 180) < 1e-6, "azimute sul");
+  assert(cardinalDirectionPt(sul.azimuth_deg) === "sul", "cardeal sul");
+  const so = orderHeadingEndpoints([0, 0], [-1, 1]);
+  assert(cardinalDirectionPt(so.azimuth_deg) === "sudoeste", "cardeal sudoeste");
+}
 assert(Math.abs(lineAzimuthDeg([0, 0], [0, -1])) < 1e-6, "norte = 0°");
+assert(cardinalDirectionPt(0) === "norte", "0° = norte");
+assert(cardinalDirectionPt(90) === "leste", "90° = leste");
+assert(cardinalDirectionPt(135) === "sudeste", "135° = sudeste");
+assert(cardinalDirectionPt(225) === "sudoeste", "225° = sudoeste");
+assert(cardinalDirectionPt(315) === "noroeste", "315° = noroeste");
+assert(cardinalDirectionPt(16.8) === "norte", "16.8° ≈ norte");
 assert(fallAxis(93) === "x", "casa a 93° cai no eixo leste-oeste");
 assert(fallAxis(0) === "y", "0° norte estica o eixo Y");
 assert(
@@ -155,6 +172,29 @@ const tilted = generateLayout({
 });
 assert(tilted.installed > 0, "encaixa no telhado a 93°");
 assert(Math.abs((tilted.best.modules[0]?.rotation_deg ?? 0) - 3) < 1e-6, "módulos giram 3°");
+
+{
+  const stub = (id: string, x: number, y: number, area: string) => ({
+    id,
+    x_m: x,
+    y_m: y,
+    width_m: 1,
+    height_m: 2,
+    orientation: "retrato" as const,
+    source: "manual" as const,
+    violation: null,
+    area_id: area,
+  });
+  // Área B mais abaixo; dentro de A: topo-direita primeiro
+  const sorted = sortModulesReadingOrder([
+    stub("a1", 0, 0, "A"),
+    stub("a2", 3, 0, "A"),
+    stub("a3", 0, 3, "A"),
+    stub("b1", 0, 10, "B"),
+    stub("b2", 3, 10, "B"),
+  ]);
+  assert(sorted.map((m) => m.id).join(",") === "a2,a1,a3,b2,b1", "numeração D→E / cima→baixo / área a área");
+}
 
 console.log("selfcheck ok", {
   installed: first.installed,

@@ -1,4 +1,5 @@
 import type { Pt, RoofArea, RoofPlane } from "../types";
+import { lineAzimuthDeg } from "./scale";
 
 export const DEFAULT_ROOF_PLANE: RoofPlane = {
   slope_percent: 0,
@@ -56,11 +57,44 @@ export function roofAzimuthDeg(area: RoofArea): number {
 }
 
 /** Giro da grade na figura: 90° (leste) = horizontal; 93° = 3° de desvio. */
-export function roofGridDeg(area: RoofArea): number {
-  let d = roofAzimuthDeg(area) - 90;
+export function azimuthToGridDeg(azimuth_deg: number): number {
+  let d = azimuth_deg - 90;
   d = ((d % 360) + 360) % 360;
   if (d > 180) d -= 360;
   return d;
+}
+
+export function roofGridDeg(area: RoofArea): number {
+  return azimuthToGridDeg(roofAzimuthDeg(area));
+}
+
+/**
+ * Azimute da aresta mais longa do polígono (fileira/cumeeira desenhada na figura).
+ * Escolhe o sentido (0° ou +180°) mais próximo de `preferNear` quando informado.
+ */
+export function dominantEdgeAzimuthDeg(poly: Pt[], preferNear?: number | null): number {
+  if (poly.length < 2) return preferNear ?? 90;
+  const dist = (a: number, b: number) => {
+    let d = Math.abs((((a - b) % 360) + 360) % 360);
+    if (d > 180) d = 360 - d;
+    return d;
+  };
+  let bestLen = 0;
+  let bestAz = preferNear ?? 90;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len <= bestLen) continue;
+    bestLen = len;
+    let az = lineAzimuthDeg(a, b);
+    if (preferNear != null && Number.isFinite(preferNear)) {
+      const alt = (az + 180) % 360;
+      if (dist(alt, preferNear) < dist(az, preferNear)) az = alt;
+    }
+    bestAz = az;
+  }
+  return Number(bestAz.toFixed(1));
 }
 
 export function roofPivot(points: Pt[]): Pt {

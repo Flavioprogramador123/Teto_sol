@@ -1,6 +1,9 @@
+import { useMemo, useState } from "react";
 import { HoverTip, ToolGroup } from "./HoverTip";
 import { useProject } from "../state/ProjectContext";
 import type { Tool } from "../types";
+import { cardinalDirectionPt } from "../engine/scale";
+import { roofAzimuthDeg } from "../engine/roofPlane";
 
 type Props = {
   areaPicker: boolean;
@@ -44,7 +47,14 @@ export function StageTools({
     applyEnhanceImage,
     setCrop,
     select,
+    activateSpecialLaunch,
+    clearSpecialLaunch,
+    nudgeSpecialAzimuth,
+    alignSpecialToPolygon,
   } = useProject();
+
+  const [diagonalPicker, setDiagonalPicker] = useState(false);
+  const [diagonalIds, setDiagonalIds] = useState<string[]>([]);
 
   const closePolygon = () => {
     finishOpenDraft();
@@ -57,11 +67,42 @@ export function StageTools({
 
   const step = state.step;
   const tool = state.tool;
+  const specialOn = Boolean(state.special_launch);
+  const usableAreas = useMemo(
+    () => state.areas.filter((a) => a.active && a.polygon_px.length >= 3),
+    [state.areas],
+  );
   const scalePoints = state.scaleDraft.length
     ? state.scaleDraft
     : state.scale.reference
       ? [state.scale.reference.point_a, state.scale.reference.point_b]
       : [];
+
+  const toggleDiagonal = () => {
+    if (state.special_launch) {
+      clearSpecialLaunch();
+      setDiagonalPicker(false);
+      setDiagonalIds([]);
+      return;
+    }
+    if (diagonalPicker) {
+      setDiagonalPicker(false);
+      setDiagonalIds([]);
+      return;
+    }
+    setAreaPicker(false);
+    setDiagonalIds(usableAreas.length === 1 ? [usableAreas[0].id] : []);
+    setDiagonalPicker(true);
+  };
+
+  const toggleDiagonalArea = (id: string) => {
+    setDiagonalIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const confirmDiagonal = () => {
+    activateSpecialLaunch(diagonalIds);
+    setDiagonalPicker(false);
+  };
 
   const activate = (id: Tool) => {
     if (id === "area") {
@@ -209,7 +250,7 @@ export function StageTools({
               {btn({
                 id: "heading",
                 label: "Direção",
-                help: "Trace um muro ou divisa alinhado ao norte do mapa para a bússola do imóvel.",
+                help: "Trace no sentido desejado: o último clique é a seta (aceita sul, oeste, etc.).",
               })}
               {btn({
                 id: "ruler",
@@ -248,7 +289,7 @@ export function StageTools({
             {tool === "heading" && (
               <span className="chip">
                 {state.scale.heading
-                  ? `bússola ${state.scale.heading.azimuth_deg.toFixed(1)}° · desvio ${(state.scale.heading.azimuth_deg - 90).toFixed(1)}°`
+                  ? `${cardinalDirectionPt(state.scale.heading.azimuth_deg)} · ${state.scale.heading.azimuth_deg.toFixed(1)}° · desvio ${(state.scale.heading.azimuth_deg - 90).toFixed(1)}°`
                   : "trace o muro ou a divisa"}
               </span>
             )}
@@ -298,7 +339,7 @@ export function StageTools({
               {action(
                 "gerar-usina",
                 state.layout ? "Atualizar usina" : "Gerar usina",
-                "Insere ou atualiza os módulos e renumera 1…N na sequência do telhado (linha a linha).",
+                "Insere ou atualiza os módulos e renumera 1…N: área por área, cima→baixo, direita→esquerda.",
                 () => calculate(),
                 { on: true, disabled: state.busy || !state.scale.calibrated || !state.areas.length },
               )}
@@ -307,6 +348,13 @@ export function StageTools({
                 label: "Inserir bloco",
                 help: "Arraste o retângulo na área verde (pode começar sobre módulo). Solte para lançar. Ctrl+clique seleciona um módulo.",
               })}
+              {action(
+                "inserir-diagonal",
+                "Inserir diagonal",
+                "Caso especial: água com rumo fora de 0°/90°/180°/270° do muro. Escolhe a(s) água(s), trava a grade nesse azimute (Inserir/Editar/Seleção). Desmarque para voltar ao normal. Não altera a direção do imóvel.",
+                toggleDiagonal,
+                { on: specialOn || diagonalPicker, disabled: state.busy || !usableAreas.length },
+              )}
               {btn({
                 id: "place-module",
                 label: "Inserir 1",
@@ -315,12 +363,12 @@ export function StageTools({
               {btn({
                 id: "select",
                 label: "Editar",
-                help: "Clique um módulo ou arraste a caixa de seleção (como no AutoCAD). Delete apaga o lote.",
+                help: "Clique um módulo ou arraste a caixa (AutoCAD). No grupo: polígono aceso, arraste para mover, círculo para girar, Delete apaga. Clique fora desmarca.",
               })}
               {btn({
                 id: "group",
                 label: "Seleção",
-                help: "Arraste a caixa sobre os módulos para marcar o lote. Delete exclui. Igual ao Editar.",
+                help: "Arraste a caixa sobre os módulos. Polígono aceso + círculo gira o bloco; arraste move; Delete exclui. Clique fora limpa a seleção.",
               })}
               {btn({
                 id: "ruler",
@@ -331,6 +379,67 @@ export function StageTools({
                 disabled: !state.ruler,
               })}
             </ToolGroup>
+            {diagonalPicker && (
+              <ToolGroup label="Águas (mesmo azimute)">
+                <span className="chip tool-hint">
+                  Marque só águas especiais com o mesmo rumo. Depois Confirmar — a grade trava; muro do imóvel não muda.
+                </span>
+                {usableAreas.map((a) => {
+                  const az = roofAzimuthDeg(a);
+                  const checked = diagonalIds.includes(a.id);
+                  return (
+                    <HoverTip
+                      key={`diag-${a.id}`}
+                      title={a.name || "Área"}
+                      text={`Azimute ${az.toFixed(1)}°. Só inclua águas com o mesmo valor.`}
+                    >
+                      <button
+                        type="button"
+                        className={checked ? "on" : ""}
+                        aria-pressed={checked}
+                        onClick={() => toggleDiagonalArea(a.id)}
+                      >
+                        {(a.name || "Área").slice(0, 18)} · {az.toFixed(0)}°
+                      </button>
+                    </HoverTip>
+                  );
+                })}
+                {action("diag-ok", "Confirmar", "Trava a grade no azimute das águas marcadas.", confirmDiagonal, {
+                  on: true,
+                  disabled: !diagonalIds.length || state.busy,
+                })}
+                {action(
+                  "diag-cancel",
+                  "Cancelar",
+                  "Fecha o seletor sem ativar o modo diagonal.",
+                  () => {
+                    setDiagonalPicker(false);
+                    setDiagonalIds([]);
+                  },
+                )}
+              </ToolGroup>
+            )}
+            {specialOn && state.special_launch && (
+              <>
+                <span className="chip tool-hint">
+                  Diagonal ON · azimute {state.special_launch.grid_azimuth_deg.toFixed(1)}° · Inserir / Editar /
+                  Seleção travados · desmarque «Inserir diagonal» para sair
+                </span>
+                <ToolGroup label="Ajuste fino">
+                  {action("diag-m1", "−1°", "Gira a grade e os módulos −1°.", () => nudgeSpecialAzimuth(-1))}
+                  {action("diag-m05", "−0,5°", "Gira a grade e os módulos −0,5°.", () => nudgeSpecialAzimuth(-0.5))}
+                  {action("diag-p05", "+0,5°", "Gira a grade e os módulos +0,5°.", () => nudgeSpecialAzimuth(0.5))}
+                  {action("diag-p1", "+1°", "Gira a grade e os módulos +1°.", () => nudgeSpecialAzimuth(1))}
+                  {action(
+                    "diag-edge",
+                    "Alinhar ao traço",
+                    "Usa a aresta mais longa do polígono da água (telhado na figura) como azimute — bom quando a fila ainda desvia um pouco do telhado3.",
+                    () => alignSpecialToPolygon(),
+                    { on: true },
+                  )}
+                </ToolGroup>
+              </>
+            )}
             {tool === "launch" && (
               <ToolGroup label="Orientação">
                 {action(
@@ -366,6 +475,37 @@ export function StageTools({
               </ToolGroup>
             )}
           </>
+        )}
+
+        {step === "shadow" && (
+          <ToolGroup label="6 · Sombreamento">
+            {btn({
+              id: "pan",
+              label: "Mover",
+              help: "Arraste o mapa para navegar. A análise de sombra fica na barra lateral.",
+            })}
+            {btn({
+              id: "ruler",
+              label: "Medir",
+              help: "Meça distância entre módulos, bordas e obstáculos.",
+            })}
+            {action("clr-r6", "Limpar medida", "Apaga a fita métrica atual.", clearMeasure, {
+              disabled: !state.ruler,
+            })}
+          </ToolGroup>
+        )}
+
+        {step === "export" && (
+          <ToolGroup label="7 · Gerar arquivo">
+            {btn({
+              id: "pan",
+              label: "Mover vista",
+              help: "Clique no vazio ou segure Alt para arrastar o mapa. Nas caixas, quem se move é o carimbo.",
+            })}
+            <span className="chip tool-hint">
+              Caixas flutuantes na figura · View bússola liga/desliga a bússola → Visualizar → PNG/PDF
+            </span>
+          </ToolGroup>
         )}
       </div>
 

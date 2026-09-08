@@ -8,11 +8,19 @@ Formato inspirado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/)
 ## [Unreleased]
 
 ### Adicionado
+- **Passo 7 · Gerar arquivo:** caixas flutuantes de verdade (cada carimbo é uma peça que acompanha o arraste; o mapa só com Alt/vazio). **View bússola** liga/desliga a bússola na figura e no arquivo. Visualizar → PNG/PDF. Logo com fundo branco.
+- **Inserir diagonal (Usina):** botão na barra trava a grade no azimute de água(s) especiais (rumo fora de 0°/90°/180°/270° do muro). Só águas com o **mesmo** azimute; Inserir bloco / Editar / Seleção usam essa grade; desmarcar o botão volta ao normal. Não altera `scale.heading` (muro). Sessão apenas (`special_launch`, não vai no `.planosol.json`). Águas ortogonais continuam no fluxo normal. Ajuste fino ±0,5°/±1° e **Alinhar ao traço** (aresta dominante do polígono) quando a fila ainda desvia um pouco (ex. telhado3).
+- **Editar / Seleção — giro do grupo:** ao marcar módulos, o polígono do bloco fica aceso; puxador circular na barra gira o grupo contínuo; arrastar e Delete seguem como hoje; clique fora (ou Esc) some o polígono e desmarca.
 - **Nuvem / qualquer PC:** rascunhos IndexedDB (máx. 3) + arquivo portátil `.planosol.json` (Salvar / Abrir). Serve para máquina local ou pasta do Google Drive Desktop; em outro PC basta abrir o mesmo arquivo.
 - **Dev tooling:** `.prettierrc.json` + `.prettierignore` (formato compartilhado); `.vscode/settings.json` exclui `.venv`, `storage`, `projetos`, `.vercel` do watcher/busca. Reversão: ver `.vscode/CHANGELOG.md`.
+- **Toggle Premium (temporário, teste interno):** botão **☀ Sol ON/OFF** na TopBar liga/desliga o módulo premium de sombreamento nesta máquina. Flag em `localStorage` (`pepilene-premium`), via `src/lib/premium.ts` (`usePremium()` / `togglePremium()`). Fora do `ProjectContext` de propósito: não entra no undo/redo nem é salva no `.planosol.json`. Com Sol ON **e** usina gerada (passo 5), libera o **passo 6 · Sombreamento** na TopBar e o botão «Ir para sombreamento» na Usina. **Remover** o botão + `premium.ts` + gates do passo 6 quando a separação básico/premium virar branch+domínio de verdade (ver Em andamento).
+- **Passo 6 · Sombreamento:** painel «Análise de sombreamento» (`SolarCard`) só nessa etapa. Gate em `ProjectContext.setStep` (mostra `notice` se Sol OFF); ao restaurar sessão em `shadow` com premium off, volta para `layout`; botão «Voltar para a usina».
+
+### Corrigido
+- **Setup local do motor solar:** sem `.venv` na raiz, `plugins/solar.ts` caía no Python global (sem `pvlib`/`pyproj`); o import eager de `solar_engine/__init__.py` derrubava até `/api/solar/scenarios`. Correção de ambiente (não versionada): criar `.venv` e `pip install -r requirements-solar.txt` — as rotas `/api/solar/scenarios|position|simulate` passam a responder `"ok": true` no `npm run dev`.
 
 ### Em andamento
-- (vazio)
+- **Versão Básica vs. Premium (sombreamento):** decisão registrada — repo/Vercel único, base compartilhada; premium = básico + módulo de sombra. Gate definitivo planejado: branch dedicada (`premium`) + domínio próprio atribuído a essa branch no mesmo projeto Vercel (funciona no plano Hobby, sem precisar de "Custom Environments" que são pagos), com env var `VITE_TIER` só naquela branch. **Atenção:** cobrar de clientes é uso comercial e o plano Hobby da Vercel só permite uso pessoal/não-comercial — ao sair de teste interno para cliente pagando, provavelmente precisa migrar para o plano Pro. Também falta resolver que o motor de sombra (`solar_engine`, Python) hoje só roda via plugin do Vite (`configureServer`/`configurePreviewServer`, dev-only) — não existe rota equivalente rodando no build estático do Vercel; precisa virar função serverless antes de valer como recurso premium na nuvem. Em **dev local** (`npm run dev` + `.venv` + `requirements-solar.txt`) o sombreamento já funciona desde 2026-09-08; enquanto o gap de produção não fecha, uso só o toggle **☀ Sol**.
 
 ---
 

@@ -1,10 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useProject } from "../state/ProjectContext";
 import type { Step } from "../types";
 import { applyTheme, readTheme, type AppTheme } from "../theme";
 import { APP_VERSION_LABEL } from "../lib/appVersion";
+import { togglePremium, usePremium } from "../lib/premium";
 import { ConfigPanel } from "./ConfigPanel";
-import { StampExport } from "./StampExport";
 
 const STEPS: Array<{ id: Step; n: number; label: string }> = [
   { id: "import", n: 1, label: "Importar" },
@@ -12,17 +12,24 @@ const STEPS: Array<{ id: Step; n: number; label: string }> = [
   { id: "scale", n: 3, label: "Calibrar" },
   { id: "draw", n: 4, label: "Telhado" },
   { id: "layout", n: 5, label: "Usina" },
+  { id: "shadow", n: 6, label: "Sombreamento" },
+  { id: "export", n: 7, label: "Gerar arquivo" },
 ];
 
 export function TopBar() {
   const { state, setStep, saveProject, newProject, setProjectName, undo, redo, canUndo, canRedo, applyPiengBridge } =
     useProject();
   const [configOpen, setConfigOpen] = useState(false);
-  const [stampOpen, setStampOpen] = useState(false);
   const [theme, setTheme] = useState<AppTheme>(readTheme);
+  const premium = usePremium();
   const piengFileRef = useRef<HTMLInputElement>(null);
-  const order: Step[] = ["import", "edit", "scale", "draw", "layout"];
+  const order: Step[] = ["import", "edit", "scale", "draw", "layout", "shadow", "export"];
   const current = order.indexOf(state.step);
+
+  // Sol OFF: sai do módulo de sombreamento (só ativo com a flag premium).
+  useEffect(() => {
+    if (!premium && state.step === "shadow") setStep("layout");
+  }, [premium, state.step, setStep]);
 
   const onPiengFile = async (file: File | null) => {
     if (!file) return;
@@ -48,15 +55,34 @@ export function TopBar() {
       </div>
       <nav className="steps">
         {STEPS.map((s, i) => {
-          const cls = s.id === state.step ? "step active" : i < current ? "step done" : "step";
+          const premiumLocked = s.id === "shadow" && !premium;
+          const cls =
+            s.id === state.step
+              ? "step active"
+              : premiumLocked
+                ? "step premium-off"
+                : i < current
+                  ? "step done"
+                  : "step";
           const locked = (s.id === "edit" || s.id === "scale") && !state.image;
           const locked2 = s.id === "draw" && !state.scale.calibrated;
           const locked3 = s.id === "layout" && !state.areas.length;
+          const locked4 = premiumLocked || (s.id === "shadow" && !state.layout);
+          const locked5 = s.id === "export" && !state.image;
           return (
             <button
               key={s.id}
               className={cls}
-              disabled={locked || locked2 || locked3}
+              disabled={locked || locked2 || locked3 || locked4 || locked5}
+              title={
+                premiumLocked
+                  ? "Ative ☀ Sol ON para liberar a análise de sombreamento (teste interno)"
+                  : s.id === "shadow" && !state.layout
+                    ? "Gere a usina (passo 5) antes da análise de sombreamento"
+                    : s.id === "export" && !state.image
+                      ? "Importe a figura antes de gerar o arquivo"
+                      : undefined
+              }
               onClick={() => setStep(s.id)}
             >
               <b>{s.n}</b>
@@ -116,6 +142,17 @@ export function TopBar() {
 
         <span className="toolbar-sep" aria-hidden="true" />
 
+        <button
+          className={`btn toolbar-seg ${premium ? "on" : ""}`}
+          type="button"
+          title="TEMPORÁRIO (teste interno): liga/desliga o módulo premium de sombreamento nesta máquina"
+          onClick={() => togglePremium()}
+        >
+          ☀ Sol {premium ? "ON" : "OFF"}
+        </button>
+
+        <span className="toolbar-sep" aria-hidden="true" />
+
         <div className="toolbar-project">
           <input
             value={state.persist?.name ?? ""}
@@ -149,24 +186,26 @@ export function TopBar() {
           <button
             className="btn ghost quiet"
             type="button"
-            title="Importar JSON do Gerador de Propostas PIENG (módulo + etiqueta)"
+            title="Importar JSON do Gerador PIENG (módulo + etiqueta)"
             onClick={() => piengFileRef.current?.click()}
           >
             PIENG JSON
           </button>
-          <button className="btn ghost quiet" disabled={!state.image} onClick={() => setStampOpen(true)}>
-            Gerar arquivo
+          <button
+            className="btn ghost quiet toolbar-gear"
+            type="button"
+            title="Configurar"
+            aria-label="Configurar"
+            onClick={() => setConfigOpen(true)}
+          >
+            <span aria-hidden="true">⚙</span>
           </button>
-          <button className="btn ghost quiet" onClick={() => setConfigOpen(true)}>
-            Configurar
-          </button>
-          <button className="btn ghost quiet" onClick={() => void newProject()}>
+          <button className="btn ghost quiet" title="Novo projeto" onClick={() => void newProject()}>
             Novo
           </button>
         </div>
       </div>
       <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} />
-      <StampExport open={stampOpen} onClose={() => setStampOpen(false)} />
     </header>
   );
 }

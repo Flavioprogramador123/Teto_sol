@@ -1,6 +1,6 @@
 export type Pt = [number, number];
 
-export type Step = "import" | "edit" | "scale" | "draw" | "layout";
+export type Step = "import" | "edit" | "scale" | "draw" | "layout" | "shadow" | "export";
 
 export type Tool =
   | "pan"
@@ -155,6 +155,8 @@ export interface VisualizationInfo {
   show_dimensions: boolean;
   /** Números nos módulos (view number) — usado na tela e no Gerar arquivo. */
   show_module_numbers: boolean;
+  /** Bússola do imóvel (view bússola) — usada na tela e no Gerar arquivo. */
+  show_compass: boolean;
   compare_original: boolean;
   use_enhanced: boolean;
   outdated: boolean;
@@ -238,6 +240,33 @@ export interface Selection {
   vertexIndex?: number;
 }
 
+/**
+ * Modo «Inserir diagonal» — sessão apenas (não grava no .planosol.json).
+ * Trava a grade de lançamento/edição no azimute das águas escolhidas; não mexe no muro do imóvel.
+ */
+export interface SpecialLaunch {
+  area_ids: string[];
+  /** Azimute travado (°) — 0 = norte, 90 = leste. */
+  grid_azimuth_deg: number;
+}
+
+export type StampOverlayId = "card" | "ticket" | "logo" | "compass";
+
+/** Posição/escala de um elemento do carimbo (frações 0–1 da figura). */
+export interface StampOverlay {
+  x: number;
+  y: number;
+  scale: number;
+  visible: boolean;
+}
+
+export interface StampLayout {
+  card: StampOverlay;
+  ticket: StampOverlay;
+  logo: StampOverlay;
+  compass: StampOverlay;
+}
+
 export interface ProjectState {
   image: ImageInfo | null;
   scale: ScaleInfo;
@@ -260,6 +289,18 @@ export interface ProjectState {
   launch_mode: LaunchMode;
   launch_orientation: ModuleOrientation;
   launches: LaunchZone[];
+  /** null = modo normal (muro / área sob o cursor). */
+  special_launch: SpecialLaunch | null;
+  /** Layout do carimbo (passo 7 · Gerar arquivo). */
+  stamp_layout: StampLayout;
+  /** Elemento do carimbo selecionado no passo 7. */
+  stamp_focus: StampOverlayId | null;
+  /** Peças flutuantes formadas (data URL por elemento) — movem com as caixas. */
+  stamp_pieces: Partial<Record<StampOverlayId, string>> | null;
+  /** @deprecated use stamp_pieces — mantido só para migração suave em memória. */
+  stamp_preview_src: string | null;
+  /** true após «Visualizar» — libera PNG/PDF e mostra blocos formados. */
+  stamp_ready: boolean;
   busy: boolean;
   notice: string | null;
   persist: PersistInfo;
@@ -280,6 +321,8 @@ export interface Etiqueta {
   empresa: string;
   slogan: string;
   logo_src: string | null;
+  /** Fundo branco atrás do logo no carimbo. */
+  logo_white_bg: boolean;
 }
 
 /** Marca PIENG fixa; cliente/endereço vazios para novo projeto. */
@@ -294,6 +337,7 @@ export const DEFAULT_ETIQUETA: Etiqueta = {
   empresa: "PIENG SOLUÇÕES ENERGÉTICAS",
   slogan: "Energia solar para um futuro mais sustentável!",
   logo_src: null,
+  logo_white_bg: true,
 };
 
 /** Etiqueta limpa para novo cliente (mesmo que DEFAULT). */
@@ -316,6 +360,12 @@ export function hydrateEtiqueta(raw?: Partial<Etiqueta> | null): Etiqueta {
     empresa: str(raw.empresa) || DEFAULT_ETIQUETA.empresa,
     slogan: str(raw.slogan) || DEFAULT_ETIQUETA.slogan,
     logo_src: raw.logo_src ?? null,
+    logo_white_bg: (() => {
+      const v = (raw as { logo_white_bg?: unknown }).logo_white_bg;
+      if (v === false || v === "0" || v === 0) return false;
+      if (v === true || v === "1" || v === 1) return true;
+      return DEFAULT_ETIQUETA.logo_white_bg;
+    })(),
   };
 }
 
@@ -323,7 +373,7 @@ export function hydrateEtiqueta(raw?: Partial<Etiqueta> | null): Etiqueta {
  * Grava no JSON: campos de cliente vazios saem como null (novo / sem preenchimento).
  * Marca/empresa/slogan mantêm texto padrão.
  */
-export function serializeEtiqueta(e: Etiqueta): Record<string, string | null> {
+export function serializeEtiqueta(e: Etiqueta): Record<string, string | boolean | null> {
   const emptyNull = (v: string) => (v.trim() ? v.trim() : null);
   return {
     titulo: e.titulo.trim() || DEFAULT_ETIQUETA.titulo,
@@ -336,6 +386,7 @@ export function serializeEtiqueta(e: Etiqueta): Record<string, string | null> {
     empresa: e.empresa.trim() || DEFAULT_ETIQUETA.empresa,
     slogan: e.slogan.trim() || DEFAULT_ETIQUETA.slogan,
     logo_src: e.logo_src,
+    logo_white_bg: Boolean(e.logo_white_bg),
   };
 }
 
@@ -391,6 +442,7 @@ export const EMPTY_VISUALIZATION: VisualizationInfo = {
   show_obstacles: true,
   show_dimensions: true,
   show_module_numbers: false,
+  show_compass: false,
   compare_original: false,
   use_enhanced: false,
   outdated: false,
