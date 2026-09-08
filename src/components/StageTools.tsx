@@ -40,7 +40,6 @@ export function StageTools({
     suggestMapFrame,
     suggestHideChrome,
     restoreOriginalImage,
-    verifyScale,
     calculate,
     applyEnhanceImage,
     setCrop,
@@ -49,6 +48,11 @@ export function StageTools({
 
   const closePolygon = () => {
     finishOpenDraft();
+  };
+
+  const clearMeasure = () => {
+    setRuler(null);
+    setModuleTapeNull();
   };
 
   const step = state.step;
@@ -212,15 +216,11 @@ export function StageTools({
                 label: "Medir",
                 help: "Meça distâncias na imagem após calibrar, ou confira uma cota conhecida.",
               })}
+              {action("clr-r", "Limpar medida", "Apaga a fita métrica atual no canvas.", clearMeasure, {
+                disabled: !state.ruler,
+              })}
             </ToolGroup>
             <ToolGroup label="Conferir">
-              {action(
-                "verify",
-                "Conferir 10 m",
-                "Gera uma barra de conferência de 10 m com a escala atual para validar a calibração.",
-                () => verifyScale(10),
-                { disabled: !state.scale.calibrated },
-              )}
               {tool === "scale" &&
                 action("clear-scale", "Limpar escala", "Remove a calibração e os pontos de referência.", clearScale)}
               {tool === "heading" &&
@@ -252,17 +252,6 @@ export function StageTools({
                   : "trace o muro ou a divisa"}
               </span>
             )}
-            {tool === "ruler" && (
-              <>
-                <span className="chip">
-                  módulo {state.module.width_m.toFixed(3)} × {state.module.height_m.toFixed(3)} m
-                </span>
-                {action("clr-r", "Limpar medida", "Apaga a fita métrica atual no canvas.", () => {
-                  setRuler(null);
-                  setModuleTapeNull();
-                })}
-              </>
-            )}
           </>
         )}
 
@@ -284,6 +273,9 @@ export function StageTools({
                 label: "Medir",
                 help: "Confira cotas e espaçamentos na planta calibrada.",
               })}
+              {action("clr-r2", "Limpar medida", "Apaga a fita métrica atual.", clearMeasure, {
+                disabled: !state.ruler,
+              })}
               {btn({
                 id: "select",
                 label: "Editar",
@@ -297,11 +289,6 @@ export function StageTools({
                 })}
               </ToolGroup>
             )}
-            {tool === "ruler" &&
-              action("clr-r2", "Limpar medida", "Apaga a fita métrica atual.", () => {
-                setRuler(null);
-                setModuleTapeNull();
-              })}
           </>
         )}
 
@@ -340,6 +327,9 @@ export function StageTools({
                 label: "Medir",
                 help: "Meça distância entre módulos, bordas e obstáculos.",
               })}
+              {action("clr-r3", "Limpar medida", "Apaga a fita métrica atual.", clearMeasure, {
+                disabled: !state.ruler,
+              })}
             </ToolGroup>
             {tool === "launch" && (
               <ToolGroup label="Orientação">
@@ -375,11 +365,6 @@ export function StageTools({
                 )}
               </ToolGroup>
             )}
-            {tool === "ruler" &&
-              action("clr-r3", "Limpar medida", "Apaga a fita métrica atual.", () => {
-                setRuler(null);
-                setModuleTapeNull();
-              })}
           </>
         )}
       </div>

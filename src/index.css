@@ -386,6 +386,56 @@ button { cursor: pointer; }
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
 }
 
+.card.sticky-fill.is-collapsed {
+  padding-bottom: 10px;
+}
+
+.sticky-fill-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sticky-fill-head h3 {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.sticky-fill-collapse {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sticky-fill-collapse:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.sticky-fill-collapse-arrow {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 5px 0 5px 7px;
+  border-color: transparent transparent transparent currentColor;
+  transition: transform 0.15s ease;
+}
+
+.sticky-fill-collapse.is-open .sticky-fill-collapse-arrow {
+  transform: rotate(90deg);
+}
+
 .card.sticky-fill header {
   display: flex;
   justify-content: space-between;
@@ -779,12 +829,13 @@ input:focus, select:focus { border-color: #8a6918; }
 }
 
 .site-compass span {
-  font-size: 11px;
+  font-size: 14px;
+  font-weight: 700;
   color: #7ec8ff;
   background: rgba(12, 16, 22, 0.82);
   border: 1px solid #3a5a72;
   border-radius: 6px;
-  padding: 2px 6px;
+  padding: 3px 8px;
 }
 
 .area-picker {
@@ -856,6 +907,23 @@ input:focus, select:focus { border-color: #8a6918; }
   width: auto;
   margin: 0;
   accent-color: var(--gold);
+}
+
+.layer-toggle-btn {
+  justify-content: center;
+  font: inherit;
+  width: 100%;
+  color: var(--text);
+}
+
+.layer-toggle-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.layer-toggle-btn:not(:disabled):hover {
+  border-color: var(--gold);
+  color: var(--gold);
 }
 
 .legend {

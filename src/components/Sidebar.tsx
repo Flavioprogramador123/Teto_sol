@@ -293,6 +293,7 @@ function ObstacleFillForm({ o }: { o: Obstacle }) {
 function DrawFillDock() {
   const { state, setDrawKind, setTool, setLaunchOrientation, select, finishOpenDraft, setDraft } = useProject();
   const ref = useRef<HTMLDivElement>(null);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("pepilene-fill-collapsed") === "1");
   const selectedArea = state.selection.kind === "area" ? state.areas.find((a) => a.id === state.selection.id) : undefined;
   const selectedObstacle = state.selection.kind === "obstacle" ? state.obstacles.find((o) => o.id === state.selection.id) : undefined;
 
@@ -311,6 +312,14 @@ function DrawFillDock() {
   useEffect(() => {
     ref.current?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [state.selection.id, state.selection.kind, state.drawKind, area?.id, obstacle?.id]);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("pepilene-fill-collapsed", next ? "1" : "0");
+      return next;
+    });
+  };
 
   const pickUtil = () => {
     setDrawKind("util");
@@ -332,80 +341,96 @@ function DrawFillDock() {
   };
 
   return (
-    <div className="card sticky-fill" ref={ref}>
-      <h3>
-        {area ? "Preencher área útil" : obstacle ? "Preencher restrita" : "Preencher área"}
-        <HelpTip>
-          Este card fica fixo em cima. Escolha Útil / Restrita / Lançar. Se já houver polígono, o formulário abre na hora; senão, feche o polígono no mapa.
-        </HelpTip>
-      </h3>
-      <div className="btn-row">
-        <button className={`btn ${state.drawKind === "util" ? "primary" : "ghost"}`} type="button" onClick={pickUtil}>
-          Útil
-        </button>
-        <button className={`btn ${state.drawKind === "restrita" ? "primary" : "ghost"}`} type="button" onClick={pickRestrita}>
-          Restrita
-        </button>
-        <button className={`btn ${state.drawKind === "lancamento" ? "primary" : "ghost"}`} type="button" onClick={pickLancamento}>
-          Lançar
-        </button>
-        <button className={`btn ${state.tool === "group" ? "primary" : "ghost"}`} type="button" onClick={() => setTool("group")}>
-          Seleção
+    <div className={`card sticky-fill${collapsed ? " is-collapsed" : ""}`} ref={ref}>
+      <div className="sticky-fill-head">
+        <h3>
+          {area ? "Preencher área útil" : obstacle ? "Preencher restrita" : "Preencher área"}
+          <HelpTip>
+            Este card fica fixo em cima. Escolha Útil / Restrita / Lançar. Se já houver polígono, o formulário abre na hora; senão, feche o polígono no mapa.
+          </HelpTip>
+        </h3>
+        <button
+          type="button"
+          className={`sticky-fill-collapse${collapsed ? "" : " is-open"}`}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expandir card" : "Recolher card"}
+          title={collapsed ? "Expandir" : "Recolher"}
+          onClick={toggleCollapsed}
+        >
+          <span className="sticky-fill-collapse-arrow" aria-hidden />
         </button>
       </div>
-      {state.drawKind === "lancamento" && (
-        <div className="btn-row" style={{ marginTop: 8 }}>
-          <button
-            type="button"
-            className={`btn ${(state.launch_orientation ?? "paisagem") === "paisagem" ? "primary" : "ghost"}`}
-            onClick={() => setLaunchOrientation("paisagem")}
-          >
-            Paisagem
-          </button>
-          <button
-            type="button"
-            className={`btn ${state.launch_orientation === "retrato" ? "primary" : "ghost"}`}
-            onClick={() => setLaunchOrientation("retrato")}
-          >
-            Retrato
-          </button>
-        </div>
-      )}
-      <p className="hint">
-        {state.tool === "group"
-          ? "Arraste a caixa sobre os módulos (AutoCAD). Solte para marcar o lote; Delete exclui."
-          : state.drawKind === "lancamento"
-            ? "Retângulo no verde lança os módulos. Não precisa nomear o lançamento."
-            : area || obstacle
-              ? "Ajuste nome, recuo e azimute neste card. Para outra água, desenhe outro polígono."
-              : `Modo ${DRAW_KIND_LABELS[state.drawKind ?? "util"]}: clique os vértices no mapa. Com 3 ou mais pontos, clique em Fechar polígono (ou Enter).`}
-      </p>
-      {state.draft.length > 0 && state.tool !== "group" && state.drawKind !== "lancamento" && (
-        <div className="btn-row" style={{ marginTop: 8 }}>
-          <button
-            type="button"
-            className="btn primary"
-            disabled={state.draft.length < 3}
-            onClick={() => finishOpenDraft()}
-          >
-            Fechar polígono{state.draft.length >= 3 ? ` (${state.draft.length} pts)` : ` · faltam ${3 - state.draft.length}`}
-          </button>
-          <button type="button" className="btn ghost" onClick={() => setDraft([])}>
-            Cancelar traço
-          </button>
-        </div>
-      )}
-      {area && state.drawKind === "util" && <AreaFillForm a={area} />}
-      {obstacle && state.drawKind === "restrita" && <ObstacleFillForm o={obstacle} />}
-      {!area && state.drawKind === "util" && state.draft.length === 0 && (
-        <div className="notice" style={{ marginTop: 8 }}>
-          Nenhuma área útil ainda. Desenhe no mapa e feche com o botão <b>Fechar polígono</b>.
-        </div>
-      )}
-      {!obstacle && state.drawKind === "restrita" && state.draft.length === 0 && (
-        <div className="notice" style={{ marginTop: 8 }}>
-          Nenhuma área restrita ainda. Desenhe no mapa e feche com o botão <b>Fechar polígono</b>.
-        </div>
+      {!collapsed && (
+        <>
+          <div className="btn-row">
+            <button className={`btn ${state.drawKind === "util" ? "primary" : "ghost"}`} type="button" onClick={pickUtil}>
+              Útil
+            </button>
+            <button className={`btn ${state.drawKind === "restrita" ? "primary" : "ghost"}`} type="button" onClick={pickRestrita}>
+              Restrita
+            </button>
+            <button className={`btn ${state.drawKind === "lancamento" ? "primary" : "ghost"}`} type="button" onClick={pickLancamento}>
+              Lançar
+            </button>
+            <button className={`btn ${state.tool === "group" ? "primary" : "ghost"}`} type="button" onClick={() => setTool("group")}>
+              Seleção
+            </button>
+          </div>
+          {state.drawKind === "lancamento" && (
+            <div className="btn-row" style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className={`btn ${(state.launch_orientation ?? "paisagem") === "paisagem" ? "primary" : "ghost"}`}
+                onClick={() => setLaunchOrientation("paisagem")}
+              >
+                Paisagem
+              </button>
+              <button
+                type="button"
+                className={`btn ${state.launch_orientation === "retrato" ? "primary" : "ghost"}`}
+                onClick={() => setLaunchOrientation("retrato")}
+              >
+                Retrato
+              </button>
+            </div>
+          )}
+          <p className="hint">
+            {state.tool === "group"
+              ? "Arraste a caixa sobre os módulos (AutoCAD). Solte para marcar o lote; Delete exclui."
+              : state.drawKind === "lancamento"
+                ? "Retângulo no verde lança os módulos. Não precisa nomear o lançamento."
+                : area || obstacle
+                  ? "Ajuste nome, recuo e azimute neste card. Para outra água, desenhe outro polígono."
+                  : `Modo ${DRAW_KIND_LABELS[state.drawKind ?? "util"]}: clique os vértices no mapa. Com 3 ou mais pontos, clique em Fechar polígono (ou Enter).`}
+          </p>
+          {state.draft.length > 0 && state.tool !== "group" && state.drawKind !== "lancamento" && (
+            <div className="btn-row" style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={state.draft.length < 3}
+                onClick={() => finishOpenDraft()}
+              >
+                Fechar polígono{state.draft.length >= 3 ? ` (${state.draft.length} pts)` : ` · faltam ${3 - state.draft.length}`}
+              </button>
+              <button type="button" className="btn ghost" onClick={() => setDraft([])}>
+                Cancelar traço
+              </button>
+            </div>
+          )}
+          {area && state.drawKind === "util" && <AreaFillForm a={area} />}
+          {obstacle && state.drawKind === "restrita" && <ObstacleFillForm o={obstacle} />}
+          {!area && state.drawKind === "util" && state.draft.length === 0 && (
+            <div className="notice" style={{ marginTop: 8 }}>
+              Nenhuma área útil ainda. Desenhe no mapa e feche com o botão <b>Fechar polígono</b>.
+            </div>
+          )}
+          {!obstacle && state.drawKind === "restrita" && state.draft.length === 0 && (
+            <div className="notice" style={{ marginTop: 8 }}>
+              Nenhuma área restrita ainda. Desenhe no mapa e feche com o botão <b>Fechar polígono</b>.
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -422,7 +447,6 @@ export function Sidebar() {
     setTool,
     clearHeading,
     setScaleInputM,
-    verifyScale,
     clearScale,
     enhancePresentation,
     patchVisualization,
@@ -444,8 +468,15 @@ export function Sidebar() {
   } = useProject();
   const catalog = useModuleCatalog();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [checkMeters, setCheckMeters] = useState(10);
   const [stampOpen, setStampOpen] = useState(false);
+
+  const verifyRulerPx = state.ruler
+    ? Math.hypot(state.ruler.b[0] - state.ruler.a[0], state.ruler.b[1] - state.ruler.a[1])
+    : 0;
+  const verifyRulerM =
+    state.scale.calibrated && verifyRulerPx > 1e-6
+      ? verifyRulerPx * state.scale.meters_per_pixel
+      : null;
 
   return (
     <aside className="sidebar">
@@ -725,51 +756,68 @@ export function Sidebar() {
           </div>
           <div className="card">
             <h3>
-              Conferir com a barra primitiva
+              Conferir medindo
               <HelpTip>
-                Depois de marcar a escala, o programa desenha uma régua do mesmo tamanho. Compare com a barra original do Earth.
-                Se não bater, limpe e marque as pontas de novo. Só então desenhe as áreas.
+                Igual ao Medir: clique o 1º e o 2º ponto na figura. O comprimento aparece ao vivo.
+                Meça a barra branca do Earth, a régua ciano gerada ou qualquer outra cota para validar.
+                Se não bater com o valor esperado, limpe a escala e marque as pontas de novo.
               </HelpTip>
             </h3>
             <p className="hint">
-              Dourado = sua escala. Ciano = régua do sistema. Verde = {checkMeters} m de conferência. As três e a barra branca do desenho precisam ter o mesmo tamanho.
+              Dourado = sua escala. Ciano = régua do sistema. Use <b>Medir</b> e compare o valor em metros na figura e neste card.
             </p>
-            <label className="field">
-              a régua gerada deve ter (m)
-              <input type="number" min={0.1} step={0.1} value={checkMeters} onChange={(e) => setCheckMeters(Number(e.target.value))} />
-            </label>
-            <button className="btn primary" disabled={!state.scale.calibrated} onClick={() => verifyScale(checkMeters)}>
-              Conferir escala
-            </button>
-            {state.scale.check && (
-              <div style={{ marginTop: 10 }}>
-                <div className="kpis">
-                  <div className="kpi">
-                    <span>sua escala</span>
-                    <strong>{state.scale.check.marked_px.toFixed(1)} px = {state.scale.check.marked_m.toFixed(2)} m</strong>
-                  </div>
-                  <div className="kpi">
-                    <span>régua gerada</span>
-                    <strong>{state.scale.check.generated_px.toFixed(1)} px = {state.scale.check.generated_m.toFixed(2)} m</strong>
-                  </div>
-                </div>
-                <span className={`chip ${state.scale.check.ok ? "ok" : "bad"}`} style={{ marginTop: 8 }}>
-                  {state.scale.check.ok
-                    ? `Cálculo ok · a régua gerada tem ${state.scale.check.generated_m.toFixed(0)} m`
-                    : `Não bate · diferença ${state.scale.check.error_pct.toFixed(2)}%`}
-                </span>
-                <p className="hint" style={{ marginTop: 8 }}>
-                  {state.scale.check.ok
-                    ? `Olhe a figura: a linha verde de ${state.scale.check.check_m.toFixed(0)} m tem de coincidir com a barra primitiva do desenho. Se a barra branca for menor ou maior, a escala não está nas pontas certas — limpe e marque de novo.`
-                    : "Limpe e marque só as pontas da barra original."}
-                </p>
+            <div className="kpis">
+              <div className="kpi">
+                <span>medido agora</span>
+                <strong>
+                  {verifyRulerM != null
+                    ? `${verifyRulerM.toFixed(3)} m`
+                    : verifyRulerPx > 0
+                      ? `${verifyRulerPx.toFixed(1)} px`
+                      : "—"}
+                </strong>
               </div>
+              <div className="kpi">
+                <span>azimute da fita</span>
+                <strong>
+                  {verifyRulerPx > 1e-3 && state.ruler
+                    ? `${lineAzimuthDeg(state.ruler.a, state.ruler.b).toFixed(1)}°`
+                    : "—"}
+                </strong>
+              </div>
+            </div>
+            {state.scale.calibrated && verifyRulerM != null && state.scale.reference && (
+              <span
+                className={`chip ${
+                  Math.abs(verifyRulerM - state.scale.reference.real_distance_m) /
+                    state.scale.reference.real_distance_m <=
+                  0.03
+                    ? "ok"
+                    : "bad"
+                }`}
+                style={{ marginTop: 8 }}
+              >
+                {Math.abs(verifyRulerM - state.scale.reference.real_distance_m) /
+                  state.scale.reference.real_distance_m <=
+                0.03
+                  ? `Bate com a barra (${state.scale.reference.real_distance_m.toFixed(2)} m)`
+                  : `Espere ~${state.scale.reference.real_distance_m.toFixed(2)} m na barra · diferença ${Math.abs(verifyRulerM - state.scale.reference.real_distance_m).toFixed(3)} m`}
+              </span>
             )}
+            <div className="btn-row" style={{ marginTop: 10 }}>
+              <button
+                className={`btn ${state.tool === "ruler" ? "primary" : "ghost"}`}
+                disabled={!state.scale.calibrated}
+                onClick={() => setTool("ruler")}
+              >
+                Medir na figura
+              </button>
+            </div>
           </div>
           <ol className="scale-steps">
             <li>Digite o tamanho da barra original e marque as duas pontas.</li>
             <li>O sistema desenha a régua gerada ao lado da escala — não no canto.</li>
-            <li>Conferir escala: a régua tem 10 m? A barra primitiva do desenho também bate?</li>
+            <li>Medir: confira a barra do Earth e outras cotas — o valor aparece ao vivo.</li>
             <li>Trace o muro ou a divisa — a bússola interna gira; a figura fica no lugar.</li>
           </ol>
           <SolarCard />

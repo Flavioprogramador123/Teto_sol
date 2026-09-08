@@ -602,7 +602,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         scale: { ...scale, heading: s.scale.heading },
         scaleDraft: [a, b],
         scale_input_m: meters,
-        notice: `Escala de ${meters.toFixed(2)} m aplicada. A régua gerada aparece ao lado. Clique em Conferir escala.`,
+        notice: `Escala de ${meters.toFixed(2)} m aplicada. A régua gerada aparece ao lado. Use Medir para conferir na figura.`,
         layout: null,
       }));
     } catch (err) {
@@ -629,7 +629,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       return {
         ...s,
         scale: { ...s.scale, heading },
-        headingDraft: [a, b],
+        headingDraft: [],
         areas,
         layout: packed ? packed.layout : s.layout,
         notice: `Bússola do imóvel em ${azimuth_deg}° (desvio ${gridLabel}). A figura não girou — os módulos seguem o muro.`,
@@ -1995,7 +1995,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       image,
       scale: { ...EMPTY_SCALE, ...p.scale, heading: p.scale.heading ?? null, check: p.scale.check ?? null },
       scaleDraft: p.scaleDraft,
-      headingDraft: p.scale.heading ? [p.scale.heading.point_a, p.scale.heading.point_b] : [],
+      headingDraft: [],
       scale_input_m: p.scale_input_m ?? 10,
       ruler: p.ruler,
       crop: p.crop,

@@ -218,6 +218,13 @@ export function CanvasBoard() {
   useEffect(() => {
     if (state.tool !== "ruler") setModuleTape(null);
   }, [state.tool]);
+  // Rascunho de direção não pode ficar espelhando o traço salvo — senão o checkbox nunca oculta.
+  useEffect(() => {
+    if (state.tool === "heading") return;
+    if (!state.scale.heading) return;
+    if ((state.headingDraft?.length ?? 0) === 0) return;
+    setHeadingDraft([]);
+  }, [state.tool, state.scale.heading, state.headingDraft?.length, setHeadingDraft]);
   // Área útil / restrita: após ~2,2 s sem clique, sugere fechar no 1º ponto
   useEffect(() => {
     setCloseHereHint(false);
@@ -1138,6 +1145,7 @@ export function CanvasBoard() {
   }, [state.scale]);
 
   const ui = 1 / Math.max(view.zoom * fit, 0.04);
+  /** Checkbox liga o traço salvo. Ferramenta Direção / rascunho em curso também mostram. */
   const headingVisible =
     showHeading || state.tool === "heading" || (state.headingDraft?.length ?? 0) > 0;
 
@@ -1189,13 +1197,24 @@ export function CanvasBoard() {
           />
           view number módulos
         </label>
-        <label className="layer-toggle" title="Mostra o traço do muro/divisa e o azimute na figura">
+        <label
+          className="layer-toggle"
+          title={
+            state.scale.heading
+              ? "Mostra o traço do muro/divisa e o azimute na figura"
+              : "Trace a direção do imóvel na calibração para poder exibir o traço"
+          }
+        >
           <input
             type="checkbox"
             checked={showHeading}
             onChange={(e) => {
-              setShowHeading(e.target.checked);
-              localStorage.setItem("pepilene-show-heading", e.target.checked ? "1" : "0");
+              const on = e.target.checked;
+              setShowHeading(on);
+              localStorage.setItem("pepilene-show-heading", on ? "1" : "0");
+              if (on && !state.scale.heading) {
+                setNotice("Ainda não há direção traçada. Use «Traçar muro / divisa» na calibração.");
+              }
             }}
           />
           view direção
@@ -1624,18 +1643,18 @@ export function CanvasBoard() {
                   {headingPoints.length === 2 && (
                     <text
                       x={(headingPoints[0][0] + headingPoints[1][0]) / 2}
-                      y={(headingPoints[0][1] + headingPoints[1][1]) / 2 - 16 * ui}
+                      y={(headingPoints[0][1] + headingPoints[1][1]) / 2 - 22 * ui}
                       fill="#ccebff"
-                      fontSize={15 * ui}
+                      fontSize={24 * ui}
                       fontWeight={800}
                       textAnchor="middle"
                       stroke="#0a121c"
-                      strokeWidth={3 * ui}
+                      strokeWidth={4 * ui}
                       paintOrder="stroke"
                     >
                       {state.scale.heading
-                        ? `direção · ${state.scale.heading.azimuth_deg.toFixed(1)}° · desvio ${(state.scale.heading.azimuth_deg - 90).toFixed(1)}°`
-                        : "direção · traçando…"}
+                        ? `Direção imóvel · ${state.scale.heading.azimuth_deg.toFixed(1)}° · desvio ${(state.scale.heading.azimuth_deg - 90).toFixed(1)}°`
+                        : "Direção imóvel · traçando…"}
                     </text>
                   )}
                 </g>
@@ -1665,19 +1684,22 @@ export function CanvasBoard() {
                     y1={state.ruler.a[1]}
                     x2={state.ruler.b[0]}
                     y2={state.ruler.b[1]}
-                    stroke={measured?.match.ok ? "#8ee08a" : "#5ec8d6"}
-                    strokeWidth={2 * ui}
+                    stroke={measured?.match.ok ? "#8ee08a" : "#f0c14a"}
+                    strokeWidth={2.4 * ui}
                   />
-                  <circle cx={state.ruler.a[0]} cy={state.ruler.a[1]} r={4 * ui} fill="#5ec8d6" />
-                  <circle cx={state.ruler.b[0]} cy={state.ruler.b[1]} r={4 * ui} fill="#5ec8d6" />
+                  <circle cx={state.ruler.a[0]} cy={state.ruler.a[1]} r={4 * ui} fill="#f0c14a" />
+                  <circle cx={state.ruler.b[0]} cy={state.ruler.b[1]} r={4 * ui} fill="#f0c14a" />
                   {Math.hypot(state.ruler.b[0] - state.ruler.a[0], state.ruler.b[1] - state.ruler.a[1]) > 4 && (
                     <text
                       x={(state.ruler.a[0] + state.ruler.b[0]) / 2}
-                      y={(state.ruler.a[1] + state.ruler.b[1]) / 2 - 10 * ui}
-                      fill={measured?.match.ok ? "#8ee08a" : "#5ec8d6"}
-                      fontSize={13 * ui}
-                      fontWeight={700}
+                      y={(state.ruler.a[1] + state.ruler.b[1]) / 2 - 22 * ui}
+                      fill={measured?.match.ok ? "#8ee08a" : "#f0c14a"}
+                      fontSize={24 * ui}
+                      fontWeight={800}
                       textAnchor="middle"
+                      stroke="#0a121c"
+                      strokeWidth={4 * ui}
+                      paintOrder="stroke"
                     >
                       {measured
                         ? `${measured.meters.toFixed(3)} m · `

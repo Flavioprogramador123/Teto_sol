@@ -9,6 +9,7 @@ Formato inspirado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/)
 
 ### Adicionado
 - **Nuvem / qualquer PC:** rascunhos IndexedDB (máx. 3) + arquivo portátil `.planosol.json` (Salvar / Abrir). Serve para máquina local ou pasta do Google Drive Desktop; em outro PC basta abrir o mesmo arquivo.
+- **Dev tooling:** `.prettierrc.json` + `.prettierignore` (formato compartilhado); `.vscode/settings.json` exclui `.venv`, `storage`, `projetos`, `.vercel` do watcher/busca. Reversão: ver `.vscode/CHANGELOG.md`.
 
 ### Em andamento
 - (vazio)
